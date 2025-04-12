@@ -18,7 +18,7 @@ class BaseTrainer:
     def __init__(
         self,
         model,
-        criterion,
+        # criterion,
         metrics,
         optimizer,
         lr_scheduler,
@@ -67,7 +67,7 @@ class BaseTrainer:
         self.log_step = config.trainer.get("log_step", 50)
 
         self.model = model
-        self.criterion = criterion
+        # self.criterion = criterion
         self.optimizer = optimizer
         self.lr_scheduler = lr_scheduler
         self.batch_transforms = batch_transforms
@@ -199,7 +199,7 @@ class BaseTrainer:
         """
         self.is_train = True
         self.model.train()
-        self.train_metrics.reset()
+        # self.train_metrics.reset()
         self.writer.set_step((epoch - 1) * self.epoch_len)
         self.writer.add_scalar("epoch", epoch)
         for batch_idx, batch in enumerate(

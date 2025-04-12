@@ -1,1 +1,1 @@
-from src.datasets.example import ExampleDataset
+from src.datasets.stocks_dataset import StocksDataset

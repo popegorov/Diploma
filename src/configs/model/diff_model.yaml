@@ -1,0 +1,16 @@
+_target_: src.model.BaseDiffModel
+target_dim: 2
+time_embed_dim: 128
+feature_embed_dim: 16
+num_steps: 50
+is_unconditional: 0
+beta_start: 0.0001
+beta_end: 0.5
+n_samples: 10
+diff_model_config:
+  layers: 4
+  channels: 64
+  num_steps: ${model.num_steps}
+  nheads: 8
+  diffusion_embedding_dim: 128
+  is_linear: False

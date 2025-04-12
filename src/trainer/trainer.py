@@ -27,18 +27,15 @@ class Trainer(BaseTrainer):
                 model outputs, and losses.
         """
         batch = self.move_batch_to_device(batch)
-        batch = self.transform_batch(batch)  # transform batch on device -- faster
 
         metric_funcs = self.metrics["inference"]
         if self.is_train:
             metric_funcs = self.metrics["train"]
             self.optimizer.zero_grad()
 
+        batch['is_train'] = self.is_train
         outputs = self.model(**batch)
         batch.update(outputs)
-
-        all_losses = self.criterion(**batch)
-        batch.update(all_losses)
 
         if self.is_train:
             batch["loss"].backward()  # sum of all losses is always called loss
@@ -51,8 +48,8 @@ class Trainer(BaseTrainer):
         for loss_name in self.config.writer.loss_names:
             metrics.update(loss_name, batch[loss_name].item())
 
-        for met in metric_funcs:
-            metrics.update(met.name, met(**batch))
+        # for met in metric_funcs:
+        #     metrics.update(met.name, met(**batch))
         return batch
 
     def _log_batch(self, batch_idx, batch, mode="train"):

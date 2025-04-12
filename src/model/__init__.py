@@ -1,5 +1,6 @@
-from src.model.baseline_model import BaselineModel
+from src.model.main_model import BaseDiffModel
+from src.model.diffusion import DiffusionModel
 
 __all__ = [
-    "BaselineModel",
+    "BaseDiffModel",
 ]

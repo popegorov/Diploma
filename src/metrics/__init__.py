@@ -1,1 +1,1 @@
-from src.metrics.example import ExampleMetric
+from src.metrics.r_square import R2

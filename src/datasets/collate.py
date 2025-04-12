@@ -14,12 +14,24 @@ def collate_fn(dataset_items: list[dict]):
             of the tensors.
     """
 
+    obs_data = []
+    paths = []
+    obs_masks = []
+    gt_masks = []
+    obs_tps = []
     result_batch = {}
 
-    # example of collate_fn
-    result_batch["data_object"] = torch.vstack(
-        [elem["data_object"] for elem in dataset_items]
-    )
-    result_batch["labels"] = torch.tensor([elem["labels"] for elem in dataset_items])
+    for cur_dict in dataset_items:
+        obs_data.append(cur_dict["observed_data"])
+        obs_masks.append(cur_dict['observed_masks'])
+        obs_tps.append(cur_dict['observed_timestamps'])
+        gt_masks.append(cur_dict['gt_masks'])
 
+        paths.append(cur_dict['path'])
+
+    result_batch["paths"] = paths
+    result_batch["observed_data"] = torch.stack(obs_data, dim=0).transpose(1, 2)
+    result_batch["observed_masks"] = torch.stack(obs_masks, dim=0).transpose(1, 2)
+    result_batch["observed_timestamps"] = torch.stack(obs_tps, dim=0)
+    result_batch["gt_masks"] = torch.stack(gt_masks, dim=0).transpose(1, 2)
     return result_batch

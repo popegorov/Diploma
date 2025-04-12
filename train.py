@@ -11,8 +11,9 @@ from src.utils.init_utils import set_random_seed, setup_saving_and_logging
 
 warnings.filterwarnings("ignore", category=UserWarning)
 
+OmegaConf.register_new_resolver("scale", lambda value, factor: int(value * factor))
 
-@hydra.main(version_base=None, config_path="src/configs", config_name="baseline")
+@hydra.main(version_base=None, config_path="src/configs", config_name="diff_model")
 def main(config):
     """
     Main script for training. Instantiates the model, optimizer, scheduler,
@@ -42,7 +43,7 @@ def main(config):
     logger.info(model)
 
     # get function handles of loss and metrics
-    loss_function = instantiate(config.loss_function).to(device)
+    # loss_function = instantiate(config.loss_function).to(device)
     metrics = instantiate(config.metrics)
 
     # build optimizer, learning rate scheduler
@@ -56,7 +57,7 @@ def main(config):
 
     trainer = Trainer(
         model=model,
-        criterion=loss_function,
+        # criterion=loss_function,
         metrics=metrics,
         optimizer=optimizer,
         lr_scheduler=lr_scheduler,

@@ -1,0 +1,6 @@
+train:
+  _target_: src.datasets.StocksDataset
+  stocks_path: /Users/legend/Desktop/Универ/4/Diploma/full_history
+  limit: 2
+  missing_ratio: 0.1
+  instance_transforms: ${transforms.instance_transforms.train}

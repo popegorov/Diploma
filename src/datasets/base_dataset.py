@@ -2,6 +2,7 @@ import logging
 import random
 from typing import List
 
+import pandas as pd
 import torch
 from torch.utils.data import Dataset
 
@@ -18,7 +19,12 @@ class BaseDataset(Dataset):
     """
 
     def __init__(
-        self, index, limit=None, shuffle_index=False, instance_transforms=None
+        self, 
+        index: list, 
+        limit: int=None, 
+        shuffle_index: bool=False, 
+        instance_transforms: dict=None,
+        missing_ratio: float=0.1,
     ):
         """
         Args:
@@ -39,6 +45,7 @@ class BaseDataset(Dataset):
         self._index: List[dict] = index
 
         self.instance_transforms = instance_transforms
+        self.missing_ratio = missing_ratio
 
     def __getitem__(self, ind):
         """
@@ -57,11 +64,38 @@ class BaseDataset(Dataset):
         """
         data_dict = self._index[ind]
         data_path = data_dict["path"]
-        data_object = self.load_object(data_path)
-        data_label = data_dict["label"]
+        timestamps, observed_data = self.load_object(data_path)
 
-        instance_data = {"data_object": data_object, "labels": data_label}
+        instance_data = {
+            "path": data_path, 
+            "observed_data": torch.cat(
+                [observed_data, 
+                timestamps.unsqueeze(1)], 
+                dim=1),
+        }
         instance_data = self.preprocess_data(instance_data)
+        observed_data = instance_data["observed_data"][:, :2]
+        timestamps = instance_data["observed_data"][:, 2]
+
+        observed_masks = ~torch.isnan(observed_data)
+        masks = observed_masks.flatten().clone()
+        obs_idxs = torch.nonzero(masks, as_tuple=True)[0]
+        num_to_mask = int(len(obs_idxs) * self.missing_ratio)
+        if num_to_mask > 0:
+            miss_idxs = obs_idxs[torch.randperm(len(obs_idxs))[:num_to_mask]]
+            masks[miss_idxs] = False
+
+        gt_masks = masks.reshape(observed_masks.shape).float()
+        observed_data = torch.nan_to_num(observed_data)
+        observed_masks = observed_masks.float()
+
+        to_add = {
+            "gt_masks": gt_masks,
+            "observed_data": observed_data,
+            "observed_masks": observed_masks,
+            "observed_timestamps": timestamps,
+        }
+        instance_data.update(to_add)
 
         return instance_data
 
@@ -78,9 +112,9 @@ class BaseDataset(Dataset):
         Args:
             path (str): path to the object.
         Returns:
-            data_object (Tensor):
+            data_object (pd.Dataframe):
         """
-        data_object = torch.load(path)
+        data_object = pd.read_csv(path)
         return data_object
 
     def preprocess_data(self, instance_data):
@@ -140,11 +174,7 @@ class BaseDataset(Dataset):
         """
         for entry in index:
             assert "path" in entry, (
-                "Each dataset item should include field 'path'" " - path to audio file."
-            )
-            assert "label" in entry, (
-                "Each dataset item should include field 'label'"
-                " - object ground-truth label."
+                "Each dataset item should include field 'path'" " - path to csv file."
             )
 
     @staticmethod
