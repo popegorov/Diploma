@@ -1,6 +1,14 @@
 train:
   _target_: src.datasets.StocksDataset
-  stocks_path: /Users/legend/Desktop/Универ/4/Diploma/full_history
+  stocks_dir: /Users/legend/Desktop/Универ/4/Diploma/full_history
+  stocks_list: /Users/legend/Desktop/Универ/4/Diploma/existing_s&p500_stocks.txt
   limit: 2
-  missing_ratio: 0.1
+  num_train_stocks: 300
+  instance_transforms: ${transforms.instance_transforms.train}
+val: 
+  _target_: src.datasets.StocksDataset
+  stocks_dir: /Users/legend/Desktop/Универ/4/Diploma/full_history
+  stocks_list: /Users/legend/Desktop/Универ/4/Diploma/existing_s&p500_stocks.txt
+  limit: 2
+  num_train_stocks: 300
   instance_transforms: ${transforms.instance_transforms.train}

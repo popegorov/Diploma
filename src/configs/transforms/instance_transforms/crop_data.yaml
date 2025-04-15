@@ -1,7 +1,2 @@
-train:
-  observed_data: # name of the tensor on which we apply transform
-    _target_: torchvision.transforms.v2.Compose
-    transforms:
-      - _target_: src.transforms.Crop
-        seq_length: 32
+train: null
 inference: null

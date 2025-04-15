@@ -11,8 +11,8 @@ class R2(BaseMetric):
         self, 
         predicted: torch.Tensor, 
         observed_data: torch.Tensor,
-        observed_mask: torch.Tensor,
-        gt_mask: torch.Tensor, 
+        observed_masks: torch.Tensor,
+        gt_masks: torch.Tensor, 
         **batch) -> float:
         """
         Metric calculation logic.
@@ -20,14 +20,15 @@ class R2(BaseMetric):
         Args:
             predicted (Tensor): model output predictions.
             observed_data (Tensor): ground-truth objects.
-            observed_mask (Tensor): indicator of objects.
-            gt_mask (Tensor): indicator of train objects.
+            observed_masks (Tensor): indicator of objects.
+            gt_masks (Tensor): indicator of train objects.
 
         Returns:
-            metric (float): calculated metric.
+            metric (float): calculated R^2 metric.
         """
 
-        target_mask = observed_mask - gt_mask
+
+        target_mask = observed_masks - gt_masks
         target_data = observed_data * target_mask
         predicted_data = predicted * target_mask
 

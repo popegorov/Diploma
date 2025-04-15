@@ -1,8 +1,8 @@
-import logging
-import random
 from typing import List
-
+import logging
+import numpy as np
 import pandas as pd
+import random
 import torch
 from torch.utils.data import Dataset
 
@@ -20,11 +20,11 @@ class BaseDataset(Dataset):
 
     def __init__(
         self, 
-        index: list, 
-        limit: int=None, 
-        shuffle_index: bool=False, 
+        X: np.array,
+        timestamps: np.array,
+        limit: int=None,
+        seq_len: int=32,
         instance_transforms: dict=None,
-        missing_ratio: float=0.1,
     ):
         """
         Args:
@@ -39,13 +39,14 @@ class BaseDataset(Dataset):
                 should be applied on the instance. Depend on the
                 tensor name.
         """
-        self._assert_index_is_valid(index)
 
-        index = self._shuffle_and_limit_index(index, limit, shuffle_index)
-        self._index: List[dict] = index
+        self.seq_len = seq_len
+        X, timestamps = self._limit_index(X, timestamps, limit)
+        self.X = X
+        self.timestamps = timestamps
+        
 
         self.instance_transforms = instance_transforms
-        self.missing_ratio = missing_ratio
 
     def __getitem__(self, ind):
         """
@@ -62,40 +63,22 @@ class BaseDataset(Dataset):
             instance_data (dict): dict, containing instance
                 (a single dataset element).
         """
-        data_dict = self._index[ind]
-        data_path = data_dict["path"]
-        timestamps, observed_data = self.load_object(data_path)
-
-        instance_data = {
-            "path": data_path, 
-            "observed_data": torch.cat(
-                [observed_data, 
-                timestamps.unsqueeze(1)], 
-                dim=1),
-        }
-        instance_data = self.preprocess_data(instance_data)
-        observed_data = instance_data["observed_data"][:, :2]
-        timestamps = instance_data["observed_data"][:, 2]
+        timestamps = torch.tensor(self.timestamps[ind: ind+self.seq_len], dtype=torch.float32)
+        observed_data = torch.tensor(self.X[ind: ind+self.seq_len], dtype=torch.float32)
 
         observed_masks = ~torch.isnan(observed_data)
-        masks = observed_masks.flatten().clone()
-        obs_idxs = torch.nonzero(masks, as_tuple=True)[0]
-        num_to_mask = int(len(obs_idxs) * self.missing_ratio)
-        if num_to_mask > 0:
-            miss_idxs = obs_idxs[torch.randperm(len(obs_idxs))[:num_to_mask]]
-            masks[miss_idxs] = False
-
-        gt_masks = masks.reshape(observed_masks.shape).float()
+        masks = observed_masks.clone()
+        masks[-1] = False
+        gt_masks = masks.float()
         observed_data = torch.nan_to_num(observed_data)
         observed_masks = observed_masks.float()
 
-        to_add = {
+        instance_data = {
             "gt_masks": gt_masks,
             "observed_data": observed_data,
             "observed_masks": observed_masks,
             "observed_timestamps": timestamps,
         }
-        instance_data.update(to_add)
 
         return instance_data
 
@@ -103,19 +86,7 @@ class BaseDataset(Dataset):
         """
         Get length of the dataset (length of the index).
         """
-        return len(self._index)
-
-    def load_object(self, path):
-        """
-        Load object from disk.
-
-        Args:
-            path (str): path to the object.
-        Returns:
-            data_object (pd.Dataframe):
-        """
-        data_object = pd.read_csv(path)
-        return data_object
+        return len(self.X) - self.seq_len
 
     def preprocess_data(self, instance_data):
         """
@@ -161,59 +132,18 @@ class BaseDataset(Dataset):
         # Filter logic
         pass
 
-    @staticmethod
-    def _assert_index_is_valid(index):
+    def _limit_index(self, X, timestamps, limit):
         """
-        Check the structure of the index and ensure it satisfies the desired
-        conditions.
+        Limit the total number of elements.
 
         Args:
-            index (list[dict]): list, containing dict for each element of
-                the dataset. The dict has required metadata information,
-                such as label and object path.
-        """
-        for entry in index:
-            assert "path" in entry, (
-                "Each dataset item should include field 'path'" " - path to csv file."
-            )
-
-    @staticmethod
-    def _sort_index(index):
-        """
-        Sort index via some rules.
-
-        This is not used in the example. The method should be called in
-        the __init__ before shuffling and limiting and after filtering.
-
-        Args:
-            index (list[dict]): list, containing dict for each element of
-                the dataset. The dict has required metadata information,
-                such as label and object path.
-        Returns:
-            index (list[dict]): sorted list, containing dict for each element
-                of the dataset. The dict has required metadata information,
-                such as label and object path.
-        """
-        return sorted(index, key=lambda x: x["KEY_FOR_SORTING"])
-
-    @staticmethod
-    def _shuffle_and_limit_index(index, limit, shuffle_index):
-        """
-        Shuffle elements in index and limit the total number of elements.
-
-        Args:
-            index (list[dict]): list, containing dict for each element of
-                the dataset. The dict has required metadata information,
-                such as label and object path.
+            X (np.array): list, containing all observed data
+            timestamps (np.array): list containing all observed timestamps
             limit (int | None): if not None, limit the total number of elements
                 in the dataset to 'limit' elements.
-            shuffle_index (bool): if True, shuffle the index. Uses python
-                random package with seed 42.
         """
-        if shuffle_index:
-            random.seed(42)
-            random.shuffle(index)
-
         if limit is not None:
-            index = index[:limit]
-        return index
+            limit = self.seq_len + limit
+            X = X[:limit]
+            timestamps = timestamps[:limit]
+        return X, timestamps

@@ -218,7 +218,7 @@ class BaseDiffModel(nn.Module):
 
         B, K, L = observed_data.shape
         if not is_train:
-            t = torch.ones(size=B, dtype=torch.long, device=self.device) * set_t
+            t = torch.ones(size=[B], dtype=torch.long, device=self.device) * set_t
         else:
             t = torch.randint(0, self.num_steps, [B], device=self.device)
         
@@ -269,7 +269,10 @@ class BaseDiffModel(nn.Module):
             n_samples=self.n_samples,
         )
 
-        samples_median = samples.median(dim=1)
+        samples_median = samples.median(dim=1).values
+        print(samples_median[0])
+        print(observed_data[0])
+        print(samples[0])
 
         return {"loss": loss_sum / self.num_steps, "predicted": samples_median}
 

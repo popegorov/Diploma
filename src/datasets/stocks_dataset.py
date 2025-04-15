@@ -1,49 +1,68 @@
-from src.datasets.base_dataset import BaseDataset
+from .base_dataset import BaseDataset
 from pathlib import Path
+from sklearn.preprocessing import StandardScaler
+import numpy as np
 import pandas as pd
 import torch
-from sklearn.preprocessing import StandardScaler
 
 
 class StocksDataset(BaseDataset):
-    def __init__(self, 
-         stocks_path: str, 
-         column_names:list =['close', 'volume'],
-         *args, 
-         **kwargs) -> None:
+    def __init__(
+        self,
+        stocks_list: str,
+        stocks_dir: str,
+        num_train_stocks: int=300,
+        *args, 
+        **kwargs) -> None:
 
         data = []
-        for path in Path(stocks_path).iterdir():
-            entry = {}
-            if path.suffix == ".csv" and path.is_file():
-                entry["path"] = str(path)
-            if len(entry) > 0:
-                data.append(entry)
-        super().__init__(data, *args, **kwargs)
+        min_dates = []
+        max_dates = []
+        existing = []
+        with open(stocks_list, 'r') as f:
+            for stock in f.readlines():
+                stock = stock.strip()
+                stock_data = pd.read_csv(f"{stocks_dir}/{stock}.csv")
+                dates = pd.to_datetime(stock_data['date'])
+                min_dates.append(dates.min())
+                max_dates.append(dates.max())
+                existing.append(stock)
 
-        self.column_names = column_names
-        self.means = {}
-        self.stds = {}
-        self.start_dates = {}
+        self.num_train_stocks = num_train_stocks
+        self.stocks_dir = stocks_dir
 
-    def load_object(self, path: str) -> tuple[torch.Tensor, torch.Tensor]:
-        data_object = super().load_object(path)
-        stock = path.split('.')[0]
+        existing = np.array(existing)
+        min_dates = np.array(min_dates)
+        max_dates = np.array(max_dates)
+        idxs = min_dates.argsort()[:num_train_stocks]
+        sorted_stocks = existing[idxs]
+        min_date = min_dates[idxs][-1]
+        max_date = np.min(max_dates[idxs])
 
-        X = data_object[self.column_names].to_numpy()
-        dates = pd.to_datetime(data_object['date'])
-        start_date = dates.min()
-        pos_days = (dates - start_date).dt.total_seconds() / (24 * 3600)
-        timestamps = torch.tensor(pos_days.values, dtype=torch.float32)
+        stock = existing[0]
+        stock_data = pd.read_csv(f"{stocks_dir}/{stock}.csv")
+        dates = pd.to_datetime(stock_data['date'])
+        stock_data = stock_data[(min_date <= dates) & (dates <= max_date)]
+        observed_dates = pd.to_datetime(stock_data.date)
+        start_date = observed_dates.min()
 
+        total = pd.DataFrame(stock_data.date.tolist(), columns=['date'])
+        for stock in sorted_stocks:
+            stock_data = pd.read_csv(f"{stocks_dir}/{stock}.csv")
+            dates = pd.to_datetime(stock_data['date'])
+            stock_data = stock_data[(min_date <= dates) & (dates <= max_date)]
+            stock_data = stock_data[['date', 'close']].rename(columns={'close': stock})
+            total = total.merge(stock_data, how='inner', on='date')
+
+        X = np.log(total.drop(columns='date')).diff(-1).to_numpy()
         scaler = StandardScaler()
-        X_normalized = torch.tensor(
-            data=scaler.fit_transform(X), 
-            dtype=torch.float32,
-        )
+        X_normalized = scaler.fit_transform(X)[:-1][::-1]
 
-        self.start_dates[stock] = start_date
-        self.means[stock] = scaler.mean_
-        self.stds[stock] = scaler.scale_
-        return timestamps, X_normalized
+        pos_dates = (observed_dates - start_date).dt.total_seconds() / (24 * 3600)
+        timestamps = pos_dates[::-1].to_numpy()
 
+        self.start_date = start_date
+        self.means = scaler.mean_
+        self.stds = scaler.scale_
+
+        super().__init__(X_normalized, timestamps, *args, **kwargs)
