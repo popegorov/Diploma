@@ -86,7 +86,7 @@ class BaseDataset(Dataset):
         """
         Get length of the dataset (length of the index).
         """
-        return len(self.X) - self.seq_len
+        return len(self.X) - self.seq_len + 1
 
     def preprocess_data(self, instance_data):
         """
@@ -143,7 +143,7 @@ class BaseDataset(Dataset):
                 in the dataset to 'limit' elements.
         """
         if limit is not None:
-            limit = self.seq_len + limit
+            limit = self.seq_len + limit - 1
             X = X[:limit]
             timestamps = timestamps[:limit]
         return X, timestamps

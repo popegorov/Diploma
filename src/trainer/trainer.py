@@ -1,6 +1,6 @@
 from src.metrics.tracker import MetricTracker
 from src.trainer.base_trainer import BaseTrainer
-
+import torch
 
 class Trainer(BaseTrainer):
     """
@@ -41,7 +41,7 @@ class Trainer(BaseTrainer):
             batch["loss"].backward()  # sum of all losses is always called loss
             self._clip_grad_norm()
             self.optimizer.step()
-            if self.lr_scheduler is not None:
+            if self.lr_scheduler is not None and not isinstance(self.lr_scheduler, torch.optim.lr_scheduler.MultiStepLR):
                 self.lr_scheduler.step()
 
         # update metrics for each loss (in case of multiple losses)

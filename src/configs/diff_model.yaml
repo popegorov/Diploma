@@ -18,13 +18,13 @@ lr_scheduler:
   gamma: 0.1
 trainer:
   log_step: 20
-  n_epochs: 3
+  n_epochs: 10
   epoch_len: 100
   device_tensors: ["observed_data", "observed_masks", "gt_masks", "observed_timestamps"] # which tensors should be on device (ex. GPU)
   resume_from: null # null or path to the checkpoint dir with *.pth and config.yaml
   device: auto # device name or "auto"
   override: True # if True, will override the previous run with the same name
-  monitor: "max test_MulticlassAccuracy" # "off" or "max/min metric_name", i.e. our goal is to maximize/minimize metric
+  monitor: "max val_R2" # "off" or "max/min metric_name", i.e. our goal is to maximize/minimize metric
   save_period: 5 # checkpoint each save_period epochs in addition to the best epoch
   early_stop: ${trainer.n_epochs} # epochs for early stopping
   save_dir: "saved"

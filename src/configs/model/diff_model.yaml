@@ -7,6 +7,7 @@ is_unconditional: 0
 beta_start: 0.0001
 beta_end: 0.5
 n_samples: 10
+device: ${trainer.device}
 diff_model_config:
   layers: 4
   channels: 64

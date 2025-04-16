@@ -56,10 +56,10 @@ class StocksDataset(BaseDataset):
 
         X = np.log(total.drop(columns='date')).diff(-1).to_numpy()
         scaler = StandardScaler()
-        X_normalized = scaler.fit_transform(X)[:-1][::-1]
+        X_normalized = scaler.fit_transform(X)[:-1][::-1].copy()
 
         pos_dates = (observed_dates - start_date).dt.total_seconds() / (24 * 3600)
-        timestamps = pos_dates[::-1].to_numpy()
+        timestamps = pos_dates[::-1].to_numpy().copy()
 
         self.start_date = start_date
         self.means = scaler.mean_

@@ -85,8 +85,8 @@ class BaseDiffModel(nn.Module):
         
         position = position.unsqueeze(2)
         div_term = 1 / torch.pow(
-            input=torch.tensor([10000.0]),
-            exponent=torch.arange(start=0, end=dim_model, step=2).to(self.device) / dim_model,
+            input=torch.tensor([10000.0], device=self.device),
+            exponent=torch.arange(start=0, end=dim_model, step=2, device=self.device) / dim_model,
         )
 
         table = position * div_term

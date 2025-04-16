@@ -202,6 +202,8 @@ class BaseTrainer:
         # self.train_metrics.reset()
         self.writer.set_step((epoch - 1) * self.epoch_len)
         self.writer.add_scalar("epoch", epoch)
+        if self.lr_scheduler is not None and isinstance(self.lr_scheduler, torch.optim.lr_scheduler.MultiStepLR):
+            self.lr_scheduler.step()
         for batch_idx, batch in enumerate(
             tqdm(self.train_dataloader, desc="train", total=self.epoch_len)
         ):
