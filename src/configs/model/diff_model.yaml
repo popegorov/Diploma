@@ -1,5 +1,5 @@
 _target_: src.model.BaseDiffModel
-target_dim: ${datasets.train.num_train_stocks}
+target_dim: 300 # exactly the same as num_train_stocks in preprocess.yaml
 time_embed_dim: 128
 feature_embed_dim: 16
 num_steps: 50

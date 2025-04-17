@@ -5,6 +5,8 @@ from hydra.utils import instantiate
 from src.datasets.collate import collate_fn
 from src.utils.init_utils import set_worker_seed
 
+import numpy as np
+
 
 def inf_loop(dataloader):
     """
@@ -63,12 +65,28 @@ def get_dataloaders(config, device):
     move_batch_transforms_to_device(batch_transforms, device)
 
     # dataset partitions init
-    datasets = instantiate(config.datasets)  # instance transforms are defined inside
-
+    ratios = np.array(config.trainer.train_val_ratios)
+    one_batch = config.trainer.one_batch
+    # datasets = instantiate(config.datasets)  # instance transforms are defined inside
+    
+    assert len(ratios) == len(config.datasets.keys()), (
+        "Length of train_val_ratios and num datasets should match"
+    )
+    assert (ratios > 0.0).all(), ("All ratios should be bigger than 0")
+    assert sum(ratios) == 1.0, (
+        "Invalid split ratios. Sum of them should be 1.0"
+    )
     # dataloaders init
     dataloaders = {}
-    for dataset_partition in config.datasets.keys():
-        dataset = datasets[dataset_partition]
+    for i, dataset_partition in enumerate(config.datasets.keys()):
+        start_ratio = 0.0 if not i else ratios[i-1]
+        end_ratio = start_ratio+ratios[i]
+
+        dataset = instantiate(
+            config=config.datasets[dataset_partition],
+            start_ratio=start_ratio if not one_batch else 0.0,
+            end_ratio=end_ratio if not one_batch else 1.0,
+        )
 
         assert config.dataloader.batch_size <= len(dataset), (
             f"The batch size ({config.dataloader.batch_size}) cannot "

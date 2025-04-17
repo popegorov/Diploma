@@ -1,0 +1,7 @@
+defaults:
+  - _self_
+vars:
+  stocks_dir: /Users/legend/Desktop/Универ/4/Diploma/full_history
+  stocks_list: /Users/legend/Desktop/Универ/4/Diploma/existing_s&p500_stocks.txt
+  num_train_stocks: 300
+  save_dir: saved

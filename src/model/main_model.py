@@ -270,9 +270,6 @@ class BaseDiffModel(nn.Module):
         )
 
         samples_median = samples.median(dim=1).values
-        print(samples_median[0])
-        print(observed_data[0])
-        print(samples[0])
 
         return {"loss": loss_sum / self.num_steps, "predicted": samples_median}
 
