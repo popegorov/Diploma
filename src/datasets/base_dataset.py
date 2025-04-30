@@ -22,6 +22,7 @@ class BaseDataset(Dataset):
         self, 
         X: np.array,
         timestamps: np.array,
+        news: pd.DataFrame,
         limit: int=None,
         seq_len: int=32,
         instance_transforms: dict=None,
@@ -44,7 +45,7 @@ class BaseDataset(Dataset):
         X, timestamps = self._limit_index(X, timestamps, limit)
         self.X = X
         self.timestamps = timestamps
-        
+        self.news = news
 
         self.instance_transforms = instance_transforms
 
@@ -65,6 +66,7 @@ class BaseDataset(Dataset):
         """
         timestamps = torch.tensor(self.timestamps[ind: ind+self.seq_len], dtype=torch.float32)
         observed_data = torch.tensor(self.X[ind: ind+self.seq_len], dtype=torch.float32)
+        news.groupby('Sector')
 
         observed_masks = ~torch.isnan(observed_data)
         masks = observed_masks.clone()

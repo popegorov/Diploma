@@ -9,6 +9,8 @@ wandb
 hydra-core
 linear_attention_transformer
 scikit-learn
+transformers
+yfinance
 
 black
 isort

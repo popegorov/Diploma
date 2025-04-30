@@ -1,25 +1,134 @@
 from pathlib import Path
 from sklearn.preprocessing import StandardScaler
+from src.utils.io_utils import ROOT_PATH
+from transformers import BertTokenizer, BertForSequenceClassification, BertModel
+from tqdm import tqdm
+
 import hydra
 import json
 import numpy as np
 import pandas as pd
+import torch
+import yfinance
 
 
-@hydra.main(version_base=None, config_path="src/configs", config_name="preprocess")
-def main(config):
+def prepare_text(row):
+    text = row.Lsa_summary
+    if not isinstance(text, str) or len(text) > 1500:
+        text = row.Article_title
+    return text
+
+def get_preds_and_embeds(texts, batch_size=32):
+    device = torch.device("mps" if torch.backends.mps.is_available() else "cpu")
+    print("Device:", device)
+
+    model_name = "ProsusAI/finbert"
+    tokenizer = BertTokenizer.from_pretrained(model_name)
+    classification_model = BertForSequenceClassification.from_pretrained(model_name).to('mps')
+    embedding_model = BertModel.from_pretrained(model_name).to(device)
+
+    classification_model.eval()
+    embedding_model.eval()
+    scores = []
+    types = []
+    all_embeddings = []
+
+    label_to_type = {
+        'positive': 1,
+        'neutral': 0,
+        'negative': -1,
+    }
+    
+    for i in tqdm(range(0, len(texts), batch_size)):
+        batch = texts[i:i + batch_size]
+        
+        inputs = tokenizer(
+            batch, 
+            return_tensors="pt", 
+            padding=True, 
+            truncation=True, 
+            max_length=512
+        ).to(device)
+        
+        with torch.no_grad():
+            cls_outputs = classification_model(**inputs)
+            probs = torch.softmax(cls_outputs.logits, dim=1)
+            confidences, preds = torch.max(probs, dim=1)
+            
+            emb_outputs = embedding_model(**inputs)
+            embeddings = emb_outputs.last_hidden_state.mean(dim=1)
+        
+        id2label = classification_model.config.id2label
+        
+        for j in range(len(batch)):
+            scores.append(confidences[j].item())
+            types.append(label_to_type[id2label[preds[j].item()]])
+        
+        all_embeddings.extend(embeddings.detach().cpu().tolist())
+    
+    return scores, types, all_embeddings
+
+def preprocess_news(
+    path_to_news: str,
+    stocks_list: str,
+    stock_to_sector_path: str,
+    start_date: pd.Timestamp, 
+    end_date: pd.Timestamp):
+
+    news_data = pd.read_csv(path_to_news, nrows=30000)
+    stocks_to_observe = []
+    print("Reading stocks to observe...")
+    with open(stocks_list, 'r') as f:
+        for stock in f.readlines():
+            stocks_to_observe.append(stock.strip())
+
+    news_to_observe = news_data[news_data.Stock_symbol.isin(stocks_to_observe)].reset_index(drop=True)
+    news_to_observe.drop(columns=["Unnamed: 0"], inplace=True)
+    print("Mapping stocks to sector...")
+    with open(stock_to_sector_path, "r") as f:
+        stock_to_sector = json.load(f)
+
+    news_to_observe["Sector"] = [stock_to_sector.get(x, f'Common') for x in news_to_observe["Stock_symbol"]]
+    news_to_observe.Date = pd.to_datetime(news_to_observe.Date).dt.tz_localize(None)
+
+    print("Cropping data...")
+    news_to_observe = news_to_observe[(start_date <= news_to_observe.Date) & (news_to_observe.Date <= end_date)].reset_index(drop=True)
+
+    print("Data length", len(news_to_observe))
+    sectors = news_to_observe.Sector.unique()
+
+    news_to_observe['Year'] = news_to_observe.Date.dt.year
+    news_to_observe['Day'] = news_to_observe.Date.dt.dayofyear
+
+    # pipe = pipeline("text-classification", model="ProsusAI/finbert")
+    texts_to_process = [prepare_text(news_to_observe.iloc[i]) for i in range(len(news_to_observe))]
+
+    scores, types, embeds = get_preds_and_embeds(texts_to_process)
+
+    # result = []
+    # for i in tqdm(range(len(news_to_observe)), desc=f"Analyzing news"):
+    #     to_model = news_to_observe.iloc[i].Lsa_summary
+    #     if type(to_model) != str or len(to_model) > 1500:
+    #         to_model = news_to_observe.iloc[i].Article_title
+    #     result.append(pipe(to_model))
+ 
+
+    news_to_observe['Score'] = scores
+    news_to_observe['Type'] = types
+    news_to_observe['Embeddings'] = embeds
+
+    return news_to_observe[["Year", "Day", "Score", "Embeddings", "Sector", "Stock_symbol"]]
+
+def preprocess_stocks(
+    stocks_list: str, 
+    stocks_dir: str,
+    num_train_stocks: int):
+
     data = []
     min_dates = []
     max_dates = []
     existing = []
-
-    config = config.vars
-    num_train_stocks = config.num_train_stocks
-    stocks_dir = config.stocks_dir
-    stocks_list = config.stocks_list
-    save_dir = Path(config.save_dir) / 'preprocessed'
-    save_dir.mkdir(parents=True, exist_ok=True) 
-
+    print("Reading stocks list...")
     with open(stocks_list, 'r') as f:
         for stock in f.readlines():
             stock = stock.strip()
@@ -38,37 +147,78 @@ def main(config):
     min_date = min_dates[idxs][-1]
     max_date = np.min(max_dates[idxs])
 
+    print("Building dataset...")
     stock = existing[0]
     stock_data = pd.read_csv(f"{stocks_dir}/{stock}.csv")
     dates = pd.to_datetime(stock_data['date'])
     stock_data = stock_data[(min_date <= dates) & (dates <= max_date)]
     observed_dates = pd.to_datetime(stock_data.date)
-    start_date = observed_dates.min()
+    start_date = min_date
+    end_date = max_date
 
     total = pd.DataFrame(stock_data.date.tolist(), columns=['date'])
     for stock in sorted_stocks:
         stock_data = pd.read_csv(f"{stocks_dir}/{stock}.csv")
         dates = pd.to_datetime(stock_data['date'])
         stock_data = stock_data[(min_date <= dates) & (dates <= max_date)]
-        stock_data = stock_data[['date', 'close']].rename(columns={'close': stock})
+        stock_data = stock_data[['date', 'open', 'close']].rename(columns={'open': f"{stock}_open", 'close': f"{stock}_close"})
         total = total.merge(stock_data, how='inner', on='date')
 
     X = np.log(total.drop(columns='date')).diff(-1).to_numpy()
     scaler = StandardScaler()
     X_normalized = scaler.fit_transform(X)[:-1][::-1].copy()
+    observed_dates = observed_dates.to_numpy()[:-1][::-1]
+    scaled_total = pd.DataFrame(
+        X_normalized,
+        columns=total.columns[1:],
+    )
+    scaled_total.insert(0, 'date', observed_dates)
 
-    pos_dates = (observed_dates - start_date).dt.total_seconds() / (24 * 3600)
-    timestamps = pos_dates[::-1].to_numpy().copy()
+    # pos_dates = (observed_dates - start_date).dt.total_seconds() / (24 * 3600)
+    # timestamps = pos_dates[::-1].to_numpy().copy()
+    scaled_total.date = pd.to_datetime(scaled_total.date)
+    scaled_total['Year'] = scaled_total.date.dt.year
+    scaled_total['Day'] = scaled_total.date.dt.dayofyear
+
+    return scaled_total, scaler, start_date, end_date
+
+@hydra.main(version_base=None, config_path="src/configs", config_name="preprocess")
+def main(config):
+    config = config.vars
+    num_train_stocks = config.num_train_stocks
+    stocks_dir = config.stocks_dir
+    stocks_list = config.stocks_list
+    stock_to_sector_path = config.stock_to_sector_path
+    save_dir = ROOT_PATH / config.save_dir / 'preprocessed'
+    path_to_news = config.path_to_news
+    save_dir.mkdir(parents=True, exist_ok=True) 
+
+    scaled_X, scaler, start_date, end_date = preprocess_stocks(
+        stocks_list=stocks_list,
+        stocks_dir=stocks_dir,
+        num_train_stocks=num_train_stocks,
+    )
+
+    news_to_observe = preprocess_news(
+        path_to_news=path_to_news, 
+        stocks_list=stocks_list,
+        stock_to_sector_path=stock_to_sector_path,
+        start_date=start_date, 
+        end_date=end_date
+    )
+    news_to_observe.to_csv(save_dir / 'news.csv', index=False)
 
     to_save = {}
     to_save['start_date'] = str(start_date)
-    
-    np.save(save_dir / 'timestamps.npy', timestamps)
-    np.save(save_dir / 'X.npy', X_normalized)
+    to_save['end_date'] = str(end_date)
+
+    scaled_X.to_csv(save_dir / 'X.csv')
     np.save(save_dir / 'means.npy', scaler.mean_)
     np.save(save_dir / 'stds.npy', scaler.scale_)
     with open(save_dir / 'start_date.json', 'w', encoding='utf8') as f:
         json.dump(to_save, f, ensure_ascii=False, indent=4)
+
+    print("Success!")
 
 
 if __name__ == "__main__":
