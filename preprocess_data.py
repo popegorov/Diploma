@@ -20,7 +20,7 @@ def prepare_text(row):
     return text
 
 def get_preds_and_embeds(texts, batch_size=32) -> Tuple[List]:
-    device = torch.device("mps" if torch.backends.mps.is_available() else "cpu")
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     print("Device:", device)
 
     model_name = "ProsusAI/finbert"
