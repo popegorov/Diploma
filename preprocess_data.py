@@ -3,6 +3,7 @@ from sklearn.preprocessing import StandardScaler
 from src.utils.io_utils import ROOT_PATH
 from transformers import BertTokenizer, BertForSequenceClassification, BertModel
 from tqdm import tqdm
+from typing import Tuple, List
 
 import hydra
 import json
@@ -18,13 +19,13 @@ def prepare_text(row):
         text = row.Article_title
     return text
 
-def get_preds_and_embeds(texts, batch_size=32):
+def get_preds_and_embeds(texts, batch_size=32) -> Tuple[List]:
     device = torch.device("mps" if torch.backends.mps.is_available() else "cpu")
     print("Device:", device)
 
     model_name = "ProsusAI/finbert"
     tokenizer = BertTokenizer.from_pretrained(model_name)
-    classification_model = BertForSequenceClassification.from_pretrained(model_name).to('mps')
+    classification_model = BertForSequenceClassification.from_pretrained(model_name).to(device)
     embedding_model = BertModel.from_pretrained(model_name).to(device)
 
     classification_model.eval()
@@ -34,9 +35,9 @@ def get_preds_and_embeds(texts, batch_size=32):
     all_embeddings = []
 
     label_to_type = {
-        'positive': 1,
-        'neutral': 0,
-        'negative': -1,
+        'positive': 1.0,
+        'neutral': 1e-5,
+        'negative': -1.0,
     }
     
     for i in tqdm(range(0, len(texts), batch_size)):
@@ -73,7 +74,7 @@ def preprocess_news(
     stocks_list: str,
     stock_to_sector_path: str,
     start_date: pd.Timestamp, 
-    end_date: pd.Timestamp):
+    end_date: pd.Timestamp) -> pd.DataFrame:
 
     news_data = pd.read_csv(path_to_news, nrows=30000)
     stocks_to_observe = []
@@ -100,24 +101,17 @@ def preprocess_news(
     news_to_observe['Year'] = news_to_observe.Date.dt.year
     news_to_observe['Day'] = news_to_observe.Date.dt.dayofyear
 
-    # pipe = pipeline("text-classification", model="ProsusAI/finbert")
     texts_to_process = [prepare_text(news_to_observe.iloc[i]) for i in range(len(news_to_observe))]
 
     scores, types, embeds = get_preds_and_embeds(texts_to_process)
 
-    # result = []
-    # for i in tqdm(range(len(news_to_observe)), desc=f"Analyzing news"):
-    #     to_model = news_to_observe.iloc[i].Lsa_summary
-    #     if type(to_model) != str or len(to_model) > 1500:
-    #         to_model = news_to_observe.iloc[i].Article_title
-    #     result.append(pipe(to_model))
- 
-
     news_to_observe['Score'] = scores
     news_to_observe['Type'] = types
+    news_to_observe['Abs_Score'] = news_to_observe['Type'].abs() * news_to_observe['Score']
     news_to_observe['Embeddings'] = embeds
+    news_to_observe['Embeddings'] = news_to_observe['Embeddings'].apply(json.dumps)
 
-    return news_to_observe[["Year", "Day", "Score", "Embeddings", "Sector", "Stock_symbol"]]
+    return news_to_observe[["Year", "Day", "Type", "Score", "Abs_Score", "Embeddings", "Sector", "Stock_symbol"]]
 
 def preprocess_stocks(
     stocks_list: str, 
@@ -174,8 +168,6 @@ def preprocess_stocks(
     )
     scaled_total.insert(0, 'date', observed_dates)
 
-    # pos_dates = (observed_dates - start_date).dt.total_seconds() / (24 * 3600)
-    # timestamps = pos_dates[::-1].to_numpy().copy()
     scaled_total.date = pd.to_datetime(scaled_total.date)
     scaled_total['Year'] = scaled_total.date.dt.year
     scaled_total['Day'] = scaled_total.date.dt.dayofyear
@@ -212,7 +204,7 @@ def main(config):
     to_save['start_date'] = str(start_date)
     to_save['end_date'] = str(end_date)
 
-    scaled_X.to_csv(save_dir / 'X.csv')
+    scaled_X.to_csv(save_dir / 'X.csv', index=False)
     np.save(save_dir / 'means.npy', scaler.mean_)
     np.save(save_dir / 'stds.npy', scaler.scale_)
     with open(save_dir / 'start_date.json', 'w', encoding='utf8') as f:

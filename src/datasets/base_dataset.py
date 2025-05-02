@@ -46,8 +46,46 @@ class BaseDataset(Dataset):
         self.X = X
         self.timestamps = timestamps
         self.news = news
+        self.common_news = common_news
 
         self.instance_transforms = instance_transforms
+
+    def get_common_news(self, timestamp: str) -> torch.Tensor:
+        filtered_news = self.common_news[self.common_news['Period'] == timestamp].copy()
+        
+        top5_per_day = (
+            filtered_df
+            .sort_values('Abs_Score', ascending=False)
+        ).reset_index()
+
+        return embedding.Embeddings.tolist()
+
+    def get_observed_news(self, timestamps: torch.Tensor) -> torch.Tensor:
+        filtered_news = self.news[self.news['Period'].isin(timestamps)].copy()
+        
+        top5_per_day = (
+            filtered_df
+            .sort_values(['Period', 'Abs_Score'], ascending=[True, False])
+            .groupby(['Stock', 'Period'])
+            .agg({"Embeddings": list})
+        ).reset_index()
+
+        pivoted = embeds.pivot(index='Stock_symbol', columns='Period', values='Embeddings')
+        stocks = embeds['Stock_symbol'].unique()
+        days = embeds['Period'].unique()
+        embedding_size = len(embeds['Embeddings'].iloc[0][0])
+
+        tensor = torch.zeros((len(stocks), len(days), embedding_size), dtype=torch.float32)
+        for i, stock in enumerate(stocks):
+            for j, day in enumerate(days):
+                embedding = pivoted.loc[stock, day]
+                if embedding is None:
+                    embedding = self.get_common_news(day)
+                tensor[i, j] = torch.tensor(
+                    data=embedding, 
+                    dtype=torch.float32,
+                ).mean(axis=0) # getting average embedding for stock in period
+        return tensor
 
     def __getitem__(self, ind):
         """
@@ -75,10 +113,13 @@ class BaseDataset(Dataset):
         observed_data = torch.nan_to_num(observed_data)
         observed_masks = observed_masks.float()
 
+        observed_news = self.get_observed_news(timestamps)
+
         instance_data = {
             "gt_masks": gt_masks,
             "observed_data": observed_data,
             "observed_masks": observed_masks,
+            "observed_news": observed_news,
             "observed_timestamps": timestamps,
         }
 

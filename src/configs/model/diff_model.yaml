@@ -2,6 +2,7 @@ _target_: src.model.BaseDiffModel
 target_dim: 300 # exactly the same as num_train_stocks in preprocess.yaml
 time_embed_dim: 128
 feature_embed_dim: 16
+news_embed_dim: 768 # from FinBERT
 num_steps: 50
 is_unconditional: 0
 beta_start: 0.0001

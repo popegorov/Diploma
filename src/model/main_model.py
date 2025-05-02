@@ -11,6 +11,7 @@ class BaseDiffModel(nn.Module):
         target_dim: int, 
         time_embed_dim: int,
         feature_embed_dim: int,
+        news_embed_dim: int,
         num_steps: int,
         n_samples: int,
         is_unconditional: int,
@@ -28,10 +29,11 @@ class BaseDiffModel(nn.Module):
 
         self.emb_time_dim = time_embed_dim
         self.emb_feature_dim = feature_embed_dim
+        self.news_embed_dim = news_embed_dim
         self.is_unconditional = is_unconditional
         self.target_strategy = target_startegy
 
-        self.emb_total_dim = self.emb_time_dim + self.emb_feature_dim
+        self.emb_total_dim = self.emb_time_dim + self.emb_feature_dim + self.news_embed_dim
         if not self.is_unconditional:
             self.emb_total_dim += 1
         
@@ -116,24 +118,28 @@ class BaseDiffModel(nn.Module):
     def get_side_info(
         self,
         observed_timestamps: torch.Tensor,
+        observed_news: torch.Tensor,
         cond_mask: torch.Tensor) -> torch.Tensor:
         B, K, L = cond_mask.shape
+
+        observed_news = observed_news.transpose(1, 2) # (B, L, K, En)
 
         time_embed = self.time_embedding(
             position=observed_timestamps,
             dim_model=self.emb_time_dim
-            )
+        ) # (B, Et, L)
 
         time_embed = time_embed.unsqueeze(2).expand(-1, -1, K, -1)
         feature_embed = self.embed_layer(
             torch.arange(self.target_dim, device=self.device)
-        ) # K, E
+        ) # K, Ef
 
         feature_embed = feature_embed.unsqueeze(0).unsqueeze(0)
         feature_embed = feature_embed.expand(B, L, -1, -1)
 
-        side_info = torch.cat([time_embed, feature_embed], dim=-1) 
-        side_info = side_info.transpose(1, 3) #(B, -1, K, L)
+        side_info = torch.cat([time_embed, feature_embed], dim=-1)
+        side_info = torch.cat([side_info, observed_news], dim=-1) 
+        side_info = side_info.transpose(1, 3) #(B, Et + Ef + En, K, L)
 
         if not self.is_unconditional:
             side_mask = cond_mask.unsqueeze(1)
@@ -279,11 +285,12 @@ class BaseDiffModel(nn.Module):
         observed_data: torch.Tensor,
         observed_masks: torch.Tensor,
         observed_timestamps: torch.Tensor,
+        observed_news: torch.Tensor,
         gt_masks: torch.Tensor,
         **batch) -> dict:
 
         cond_mask = self.get_randmask(observed_masks) if is_train else gt_masks
-        side_info = self.get_side_info(observed_timestamps, cond_mask)
+        side_info = self.get_side_info(observed_timestamps, observed_news, cond_mask)
         loss = self.calc_loss if is_train else self.calc_loss_valid
 
         return loss(observed_data, cond_mask, observed_masks, side_info, is_train)
