@@ -79,17 +79,20 @@ def preprocess_news(
     start_date: pd.Timestamp, 
     end_date: pd.Timestamp) -> pd.DataFrame:
 
-    news_data = pd.read_csv(path_to_news, nrows=30000)
-    print("Reading stocks to observe...")
+    news_data = pd.read_csv(path_to_news)
 
-    news_to_observe = news_data[news_data.Stock_symbol.isin(stocks_to_observe)].reset_index(drop=True)
+    print("Cropping data...")
+    news_data.Date = pd.to_datetime(news_data.Date).dt.tz_localize(None)
+    news_to_observe = news_data[(start_date <= news_data.Date) & (news_data.Date <= end_date)].reset_index(drop=True)
+
+    print("Reading stocks to observe...")
+    news_to_observe = news_to_observe[news_to_observe.Stock_symbol.isin(stocks_to_observe) | news_to_observe.Stock_symbol.isna()].reset_index(drop=True)
     news_to_observe.drop(columns=["Unnamed: 0"], inplace=True)
     print("Mapping stocks to sector...")
     with open(stock_to_sector_path, "r") as f:
         stock_to_sector = json.load(f)
 
     news_to_observe["Sector"] = [stock_to_sector.get(x, f'Common') for x in news_to_observe["Stock_symbol"]]
-    news_to_observe.Date = pd.to_datetime(news_to_observe.Date).dt.tz_localize(None)
 
     print("Cropping data...")
     news_to_observe = news_to_observe[(start_date <= news_to_observe.Date) & (news_to_observe.Date <= end_date)].reset_index(drop=True)
