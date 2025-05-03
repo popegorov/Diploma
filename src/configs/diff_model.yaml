@@ -2,8 +2,8 @@ defaults:
   - model: diff_model
   - writer: wandb
   - metrics: diff_model
-  - datasets: diff_model
-  - dataloader: diff_model
+  - datasets: onebatch
+  - dataloader: onebatch
   - transforms: crop_only
   - _self_
 optimizer:
@@ -20,9 +20,9 @@ trainer:
   log_step: 2
   n_epochs: 3
   epoch_len: 10
-  one_batch: False
+  one_batch: True
   train_val_ratios: [0.9, 0.1] # len(train_val_ratios) should be equal to num_datasets 
-  device_tensors: ["observed_data", "observed_masks", "gt_masks", "observed_timestamps"] # which tensors should be on device (ex. GPU)
+  device_tensors: ["observed_data", "observed_masks", "observed_news", "gt_masks", "observed_timestamps"] # which tensors should be on device (ex. GPU)
   resume_from: null # null or path to the checkpoint dir with *.pth and config.yaml
   device: auto # device name or "auto"
   override: True # if True, will override the previous run with the same name

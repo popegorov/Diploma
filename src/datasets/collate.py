@@ -20,16 +20,22 @@ def collate_fn(dataset_items: list[dict]):
     obs_masks = []
     gt_masks = []
     obs_tps = []
+    obs_news = []
 
     for cur_dict in dataset_items:
         obs_data.append(cur_dict["observed_data"])
         obs_masks.append(cur_dict['observed_masks'])
         obs_tps.append(cur_dict['observed_timestamps'])
         gt_masks.append(cur_dict['gt_masks'])
+        obs_news.append(cur_dict['observed_news'])
 
 
     result_batch["observed_data"] = torch.stack(obs_data, dim=0).transpose(1, 2)
     result_batch["observed_masks"] = torch.stack(obs_masks, dim=0).transpose(1, 2)
     result_batch["observed_timestamps"] = torch.stack(obs_tps, dim=0)
     result_batch["gt_masks"] = torch.stack(gt_masks, dim=0).transpose(1, 2)
+    result_batch["observed_news"] = torch.stack(obs_news, dim=0)
+    print("obs news", result_batch["observed_news"].shape)
+    print("gt_masks", result_batch["gt_masks"].shape)
+
     return result_batch

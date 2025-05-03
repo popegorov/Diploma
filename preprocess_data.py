@@ -11,6 +11,9 @@ import numpy as np
 import pandas as pd
 import torch
 import yfinance
+import warnings
+
+warnings.filterwarnings("ignore")
 
 
 def prepare_text(row):
@@ -36,7 +39,7 @@ def get_preds_and_embeds(texts, batch_size=32) -> Tuple[List]:
 
     label_to_type = {
         'positive': 1.0,
-        'neutral': 1e-5,
+        'neutral': 1e-2,
         'negative': -1.0,
     }
     
@@ -71,17 +74,13 @@ def get_preds_and_embeds(texts, batch_size=32) -> Tuple[List]:
 
 def preprocess_news(
     path_to_news: str,
-    stocks_list: str,
+    stocks_to_observe: str,
     stock_to_sector_path: str,
     start_date: pd.Timestamp, 
     end_date: pd.Timestamp) -> pd.DataFrame:
 
     news_data = pd.read_csv(path_to_news, nrows=30000)
-    stocks_to_observe = []
     print("Reading stocks to observe...")
-    with open(stocks_list, 'r') as f:
-        for stock in f.readlines():
-            stocks_to_observe.append(stock.strip())
 
     news_to_observe = news_data[news_data.Stock_symbol.isin(stocks_to_observe)].reset_index(drop=True)
     news_to_observe.drop(columns=["Unnamed: 0"], inplace=True)
@@ -96,13 +95,10 @@ def preprocess_news(
     news_to_observe = news_to_observe[(start_date <= news_to_observe.Date) & (news_to_observe.Date <= end_date)].reset_index(drop=True)
 
     print("Data length", len(news_to_observe))
-    sectors = news_to_observe.Sector.unique()
-
     news_to_observe['Year'] = news_to_observe.Date.dt.year
     news_to_observe['Day'] = news_to_observe.Date.dt.dayofyear
 
     texts_to_process = [prepare_text(news_to_observe.iloc[i]) for i in range(len(news_to_observe))]
-
     scores, types, embeds = get_preds_and_embeds(texts_to_process)
 
     news_to_observe['Score'] = scores
@@ -118,35 +114,33 @@ def preprocess_stocks(
     stocks_dir: str,
     num_train_stocks: int):
 
-    data = []
     min_dates = []
-    max_dates = []
     existing = []
+    max_date = pd.to_datetime("2023-12-28 00:00:00")
+
     print("Reading stocks list...")
     with open(stocks_list, 'r') as f:
         for stock in f.readlines():
             stock = stock.strip()
             stock_data = pd.read_csv(f"{stocks_dir}/{stock}.csv")
             dates = pd.to_datetime(stock_data['date'])
+            if dates.max() != max_date:
+                continue
             min_dates.append(dates.min())
-            max_dates.append(dates.max())
             existing.append(stock)
 
     existing = np.array(existing)
     min_dates = np.array(min_dates)
-    max_dates = np.array(max_dates)
 
     idxs = min_dates.argsort()[:num_train_stocks]
     sorted_stocks = existing[idxs]
-    min_date = min_dates[idxs][-1]
-    max_date = np.min(max_dates[idxs])
+    min_date = min_dates[idxs][-1] 
 
     print("Building dataset...")
     stock = existing[0]
     stock_data = pd.read_csv(f"{stocks_dir}/{stock}.csv")
     dates = pd.to_datetime(stock_data['date'])
     stock_data = stock_data[(min_date <= dates) & (dates <= max_date)]
-    observed_dates = pd.to_datetime(stock_data.date)
     start_date = min_date
     end_date = max_date
 
@@ -158,21 +152,12 @@ def preprocess_stocks(
         stock_data = stock_data[['date', 'open', 'close']].rename(columns={'open': f"{stock}_open", 'close': f"{stock}_close"})
         total = total.merge(stock_data, how='inner', on='date')
 
-    X = np.log(total.drop(columns='date')).diff(-1).to_numpy()
-    scaler = StandardScaler()
-    X_normalized = scaler.fit_transform(X)[:-1][::-1].copy()
-    observed_dates = observed_dates.to_numpy()[:-1][::-1]
-    scaled_total = pd.DataFrame(
-        X_normalized,
-        columns=total.columns[1:],
-    )
-    scaled_total.insert(0, 'date', observed_dates)
+    total = total.iloc[::-1]
+    total.date = pd.to_datetime(total.date)
+    total['Year'] = total.date.dt.year
+    total['Day'] = total.date.dt.dayofyear
 
-    scaled_total.date = pd.to_datetime(scaled_total.date)
-    scaled_total['Year'] = scaled_total.date.dt.year
-    scaled_total['Day'] = scaled_total.date.dt.dayofyear
-
-    return scaled_total, scaler, start_date, end_date
+    return total, None, sorted_stocks, start_date, end_date
 
 @hydra.main(version_base=None, config_path="src/configs", config_name="preprocess")
 def main(config):
@@ -185,7 +170,7 @@ def main(config):
     path_to_news = config.path_to_news
     save_dir.mkdir(parents=True, exist_ok=True) 
 
-    scaled_X, scaler, start_date, end_date = preprocess_stocks(
+    X, scaler, sorted_stocks, start_date, end_date = preprocess_stocks(
         stocks_list=stocks_list,
         stocks_dir=stocks_dir,
         num_train_stocks=num_train_stocks,
@@ -193,7 +178,7 @@ def main(config):
 
     news_to_observe = preprocess_news(
         path_to_news=path_to_news, 
-        stocks_list=stocks_list,
+        stocks_to_observe=sorted_stocks,
         stock_to_sector_path=stock_to_sector_path,
         start_date=start_date, 
         end_date=end_date
@@ -204,9 +189,10 @@ def main(config):
     to_save['start_date'] = str(start_date)
     to_save['end_date'] = str(end_date)
 
-    scaled_X.to_csv(save_dir / 'X.csv', index=False)
-    np.save(save_dir / 'means.npy', scaler.mean_)
-    np.save(save_dir / 'stds.npy', scaler.scale_)
+    X.to_csv(save_dir / 'X.csv', index=False)
+    if scaler is not None:
+        np.save(save_dir / 'means.npy', scaler.mean_)
+        np.save(save_dir / 'stds.npy', scaler.scale_)
     with open(save_dir / 'start_date.json', 'w', encoding='utf8') as f:
         json.dump(to_save, f, ensure_ascii=False, indent=4)
 

@@ -9,7 +9,7 @@ from src.datasets.data_utils import get_dataloaders
 from src.trainer import Trainer
 from src.utils.init_utils import set_random_seed, setup_saving_and_logging
 
-warnings.filterwarnings("ignore", category=UserWarning)
+warnings.filterwarnings("ignore")
 
 OmegaConf.register_new_resolver("scale", lambda value, factor: int(value * factor))
 

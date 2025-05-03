@@ -136,9 +136,13 @@ class BaseDiffModel(nn.Module):
 
         feature_embed = feature_embed.unsqueeze(0).unsqueeze(0)
         feature_embed = feature_embed.expand(B, L, -1, -1)
+        # observed_news = observed_news.expand(-1, -1, K, -1) # only for debug
 
         side_info = torch.cat([time_embed, feature_embed], dim=-1)
+        print(side_info.shape, observed_news.shape)
+
         side_info = torch.cat([side_info, observed_news], dim=-1) 
+
         side_info = side_info.transpose(1, 3) #(B, Et + Ef + En, K, L)
 
         if not self.is_unconditional:
