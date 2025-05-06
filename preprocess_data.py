@@ -1,5 +1,3 @@
-from pathlib import Path
-from sklearn.preprocessing import StandardScaler
 from src.utils.io_utils import ROOT_PATH
 from transformers import BertTokenizer, BertForSequenceClassification, BertModel
 from tqdm import tqdm
@@ -10,7 +8,6 @@ import json
 import numpy as np
 import pandas as pd
 import torch
-import yfinance
 import warnings
 
 warnings.filterwarnings("ignore")
@@ -22,7 +19,7 @@ def prepare_text(row):
         text = row.Article_title
     return text
 
-def get_preds_and_embeds(texts, batch_size=32) -> Tuple[List]:
+def get_preds_and_embeds(texts, is_labeled=True, batch_size=32) -> Tuple[List]:
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     print("Device:", device)
 
@@ -59,8 +56,9 @@ def get_preds_and_embeds(texts, batch_size=32) -> Tuple[List]:
             probs = torch.softmax(cls_outputs.logits, dim=1)
             confidences, preds = torch.max(probs, dim=1)
             
-            emb_outputs = embedding_model(**inputs)
-            embeddings = emb_outputs.last_hidden_state.mean(dim=1)
+            if is_labeled:
+                emb_outputs = embedding_model(**inputs)
+                embeddings = emb_outputs.last_hidden_state.mean(dim=1)
         
         id2label = classification_model.config.id2label
         
@@ -68,7 +66,8 @@ def get_preds_and_embeds(texts, batch_size=32) -> Tuple[List]:
             scores.append(confidences[j].item())
             types.append(label_to_type[id2label[preds[j].item()]])
         
-        all_embeddings.extend(embeddings.detach().cpu().tolist())
+        if is_labeled:
+            all_embeddings.extend(embeddings.detach().cpu().tolist())
     
     return scores, types, all_embeddings
 
@@ -86,20 +85,26 @@ def preprocess_news(
     news_to_observe = news_data[(start_date <= news_data.Date) & (news_data.Date <= end_date)].reset_index(drop=True)
 
     print("Reading stocks to observe...")
-    news_to_observe = news_to_observe[news_to_observe.Stock_symbol.isin(stocks_to_observe) | news_to_observe.Stock_symbol.isna()].reset_index(drop=True)
+    news_to_observe = news_to_observe[news_to_observe.Stock_symbol.isin(stocks_to_observe)].reset_index(drop=True)
+    unlabeled_news = news_to_observe[news_to_observe.Stock_symbol.isna()].reset_index(drop=True)
+
     news_to_observe.drop(columns=["Unnamed: 0"], inplace=True)
+    unlabeled_news.drop(columns=["Unnamed: 0"], inplace=True)
+
+    print("Labeled data length", len(news_to_observe))
+    print("Unlabeled data length", len(unlabeled_news))
+
     print("Mapping stocks to sector...")
     with open(stock_to_sector_path, "r") as f:
         stock_to_sector = json.load(f)
 
     news_to_observe["Sector"] = [stock_to_sector.get(x, f'Common') for x in news_to_observe["Stock_symbol"]]
+    unlabeled_news["Sector"] = [stock_to_sector.get(x, f'Common') for x in unlabeled_news["Stock_symbol"]]
 
-    print("Cropping data...")
-    news_to_observe = news_to_observe[(start_date <= news_to_observe.Date) & (news_to_observe.Date <= end_date)].reset_index(drop=True)
-
-    print("Data length", len(news_to_observe))
     news_to_observe['Year'] = news_to_observe.Date.dt.year
     news_to_observe['Day'] = news_to_observe.Date.dt.dayofyear
+    unlabeled_news['Year'] = unlabeled_news.Date.dt.year
+    unlabeled_news['Day'] = unlabeled_news.Date.dt.dayofyear    
 
     texts_to_process = [prepare_text(news_to_observe.iloc[i]) for i in range(len(news_to_observe))]
     scores, types, embeds = get_preds_and_embeds(texts_to_process)
@@ -110,7 +115,16 @@ def preprocess_news(
     news_to_observe['Embeddings'] = embeds
     news_to_observe['Embeddings'] = news_to_observe['Embeddings'].apply(json.dumps)
 
-    return news_to_observe[["Year", "Day", "Type", "Score", "Abs_Score", "Embeddings", "Sector", "Stock_symbol"]]
+    texts_to_process = [prepare_text(unlabeled_news.iloc[i]) for i in range(len(unlabeled_news))]
+    scores, types, embeds = get_preds_and_embeds(texts_to_process)
+    unlabeled_news['Score'] = scores
+    unlabeled_news['Type'] = types
+    unlabeled_news['Abs_Score'] = unlabeled_news['Type'].abs() * unlabeled_news['Score']
+
+    news_to_observe = news_to_observe[["Year", "Day", "Type", "Score", "Abs_Score", "Embeddings", "Sector", "Stock_symbol"]]
+    unlabeled_news = unlabeled_news[["Year", "Day", "Type", "Score", "Abs_Score"]]
+
+    return news_to_observe, unlabeled_news
 
 def preprocess_stocks(
     stocks_list: str, 
@@ -179,14 +193,18 @@ def main(config):
         num_train_stocks=num_train_stocks,
     )
 
-    news_to_observe = preprocess_news(
+    print("Start", start_date)
+    print("End", end_date)
+
+    news_to_observe, unlabeled_news = preprocess_news(
         path_to_news=path_to_news, 
         stocks_to_observe=sorted_stocks,
         stock_to_sector_path=stock_to_sector_path,
         start_date=start_date, 
         end_date=end_date
     )
-    news_to_observe.to_csv(save_dir / 'news.csv', index=False)
+    news_to_observe.to_csv(save_dir / 'labeled_news.csv', index=False)
+    unlabeled_news.to_csv(save_dir / 'unlabeled_news.csv', index=False)
 
     to_save = {}
     to_save['start_date'] = str(start_date)
