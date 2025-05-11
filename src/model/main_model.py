@@ -79,6 +79,15 @@ class BaseDiffModel(nn.Module):
         self, 
         position: torch.Tensor, 
         dim_model: int=128) -> torch.Tensor:
+        """
+        Calculates embedding of timestamp
+        Args:
+            position (torch.Tensor): absolute timestamps
+            dim_model (int): time embedding dimension
+        Returns:
+            position_embedding (torch.Tensor): positional relevant embeddings
+        """
+
         position_emb = torch.zeros(
             size=[position.shape[0], position.shape[1], dim_model], 
             dtype=torch.float32,
@@ -98,6 +107,13 @@ class BaseDiffModel(nn.Module):
         return position_emb
 
     def get_randmask(self, observed_mask: torch.Tensor) -> torch.Tensor:
+        """
+        Calculates random mask to mask observed values for training process
+        Args:
+            observed_mask (torch.Tensor): mask of ground truth values
+        Returns:
+            cond_mask (torch.Tensor): random mask for training
+        """
         rand_for_mask = torch.rand_like(observed_mask) * observed_mask
         rand_for_mask = rand_for_mask.reshape(len(rand_for_mask), -1)
 
@@ -109,17 +125,21 @@ class BaseDiffModel(nn.Module):
         cond_mask = (rand_for_mask > 0).reshape(observed_mask.shape).float()
         return cond_mask
 
-    def get_test_pattern_mask(
-        self, 
-        observed_mask: torch.Tensor,
-        test_pattern_mask: torch.Tensor) -> torch.Tensor:
-        return observed_mask * test_pattern_mask
-
     def get_side_info(
         self,
         observed_timestamps: torch.Tensor,
         observed_news: torch.Tensor,
         cond_mask: torch.Tensor) -> torch.Tensor:
+        """
+        Accumulates all side information, such as time embeddings, 
+        news embeddings and conditional mask, in one tensor
+        Args:
+            observed_timestamps (torch.Tensor): time embeddings
+            observed_news (torch.Tensor): news embeddings
+            cond_mask (torch.Tensor): conditional mask
+        Returns:
+            side_info (torch.Tensor): accumulated information
+        """
         B, K, L = cond_mask.shape
 
         observed_news = observed_news.transpose(1, 2) # (B, L, K, En)
@@ -136,10 +156,8 @@ class BaseDiffModel(nn.Module):
 
         feature_embed = feature_embed.unsqueeze(0).unsqueeze(0)
         feature_embed = feature_embed.expand(B, L, -1, -1)
-        # observed_news = observed_news.expand(-1, -1, K, -1) # only for debug
 
         side_info = torch.cat([time_embed, feature_embed], dim=-1)
-        print(side_info.shape, observed_news.shape)
 
         side_info = torch.cat([side_info, observed_news], dim=-1) 
 
@@ -156,6 +174,15 @@ class BaseDiffModel(nn.Module):
         noisy_data: torch.Tensor,
         observed_data: torch.Tensor,
         cond_mask: torch.Tensor) -> torch.Tensor:
+        """
+        Prepares data for the required format
+        Args:
+            noisy_data (torch.Tensor): noised data
+            observed_data (torch.Tensor): ground truth data
+            cond_mask (torch.Tensor): conditional mask
+        Returns:
+            total_input (torch.Tensor): required information
+        """
         if self.is_unconditional:
             total_input = noisy_data.unsqueeze(1) # (B, 1, K, L)
         else:
@@ -171,6 +198,16 @@ class BaseDiffModel(nn.Module):
         cond_mask: torch.Tensor,
         side_info: torch.Tensor,
         n_samples: int) -> torch.Tensor:
+        """
+        Main function for inference. Imputes required values in time-series
+        Args:
+            observed_data (torch.Tensor): ground truth data
+            cond_mask (torch.Tensor): conditional mask
+            side_info (torch.Tensor): accumulated side information
+            n_samples (int): number of times to generate values
+        Returns:
+            imputed_samples (torch.Tensor): imputed information only on required positions
+        """
         B, K, L = observed_data.shape
 
         imputed_samples = torch.zeros([B, n_samples, K, L], device=self.device)
@@ -225,7 +262,18 @@ class BaseDiffModel(nn.Module):
         side_info: torch.Tensor,
         is_train: bool,
         set_t: int=-1) -> dict:
-
+        """
+        Calculates MSE loss function of target and predicted noise
+        Args:
+            observed_data (torch.Tensor): ground truth data
+            cond_mask (torch.Tensor): conditional mask
+            observed_mask (torch.Tensor): mask of ground truth data
+            side_info (torch.Tensor): accumulated side information
+            is_train (bool): indicates train process
+            set_t (int): needed for validation to check all diffusion steps
+        Returns:
+            loss (dict): dict with only one value - MSE loss
+        """
         B, K, L = observed_data.shape
         if not is_train:
             t = torch.ones(size=[B], dtype=torch.long, device=self.device) * set_t
@@ -258,7 +306,18 @@ class BaseDiffModel(nn.Module):
         observed_mask: torch.Tensor,
         side_info: torch.Tensor,
         is_train: bool=False) -> dict:
-        
+        """
+        Calculates validation loss for all diffusion steps for each tensor
+        Args:
+            observed_data (torch.Tensor): ground truth data
+            cond_mask (torch.Tensor): conditional mask
+            observed_mask (torch.Tensor): mask of ground truth data
+            side_info (torch.Tensor): accumulated side information
+            is_train (bool): indicates train process
+        Returns:
+            loss (dict): dict with two values: loss and 
+            imputed samples to calculate metrics
+        """
         loss_sum = 0.0
 
         for t in range(self.num_steps):
@@ -292,11 +351,22 @@ class BaseDiffModel(nn.Module):
         observed_news: torch.Tensor,
         gt_masks: torch.Tensor,
         **batch) -> dict:
+        """
+        Model forward
+        Args:
+            is_train (bool): indicates train process
+            observed_data (torch.Tensor): ground truth data
+            observed_masks (torch.Tensor): mask of ground truth data
+            observed_timestamps (torch.Tensor): absolute timestamps
+            observed_news (torch.Tensor): news embeddings 
+            gt_masks (torch.Tensor): ground truth masks
+        Returns:
+            loss (dict): dict with loss
+        """
 
         cond_mask = self.get_randmask(observed_masks) if is_train else gt_masks
         side_info = self.get_side_info(observed_timestamps, observed_news, cond_mask)
         loss = self.calc_loss if is_train else self.calc_loss_valid
 
         return loss(observed_data, cond_mask, observed_masks, side_info, is_train)
-
                     

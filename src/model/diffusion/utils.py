@@ -7,6 +7,17 @@ def get_torch_trans(
     channels: int=64,
     dim_ff: int=64,
     activation: str='gelu') -> nn.TransformerEncoder:
+    """
+        Gets torch transformer encoder for short sequences 
+        Args:
+            heads (int): Transformer number of heads
+            layers (int): Transformer number of layers
+            channels (int): Transformer input dimension
+            dim_ff (int): Transformer feed forward dimension
+            activation (str): Transformer activation type
+        Returns:
+            encoder (nn.Module): Transformer Encoder
+    """
 
     encoder_layer = nn.TransformerEncoderLayer(
         d_model=channels,
@@ -27,7 +38,18 @@ def get_linear_trans(
     localheads: int=0,
     localwindow: int=0,
     max_seq_len: int=256) -> LinearAttentionTransformer:
-
+    """
+        Gets torch transformer encoder for long sequences 
+        Args:
+            heads (int): Transformer number of heads
+            layers (int): Transformer number of layers
+            channels (int): Transformer input dimension
+            localheads (int): Transformer localheads
+            localwindow (str): Transformer localwindow
+            max_seq_len (int): max sequence length
+        Returns:
+            encoder (nn.Module): Transformer Encoder
+    """
     return LinearAttentionTransformer(
         dim=channels,
         depth=layers,
@@ -41,7 +63,15 @@ def Conv1d_with_init(
     in_channels: int,
     out_channels: int,
     kernel_size: int) -> nn.Conv1d:
-
+    """
+        Initializes convolution layer 
+        Args:
+            in_channels (int): number of input channels
+            out_channels (int): number of output channels
+            kernel_size (int): size of kernel
+        Returns:
+            layer (nn.Module): initialized convolution layer
+    """
     layer = nn.Conv1d(
         in_channels=in_channels,
         out_channels=out_channels,

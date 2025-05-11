@@ -15,6 +15,13 @@ warnings.filterwarnings("ignore")
 
 
 def prepare_text(row):
+    """
+    Cropping text to required size.
+    Args:
+        row: row of Frame
+    Returns:
+        text: text to process
+    """
     text = row.Lsa_summary
     if not isinstance(text, str) or len(text) > 1500:
         text = row.Article_title
@@ -22,7 +29,22 @@ def prepare_text(row):
         text = ""
     return text
 
-def get_preds_and_embeds(texts, save_dir, is_labeled=True, batch_size=64) -> Tuple[List]:
+def get_preds_and_embeds(
+        texts: list,
+        is_labeled: bool=True, 
+        batch_size: int=64) -> Tuple[List]:
+    """
+    Calculates sentiment predictions and embeddings with Finbert.
+    Args:
+        texts (str): list of texts
+        save_dir (Path): saving directory
+        is_labeled (bool): text's label indicator
+        batch_size (int): size of batch
+    Returns:
+        scores (list): list of model confidences of predictions
+        types (list): list of predicted sentiments
+        embeddings (list): list of embeddings
+    """
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     print("Device:", device)
 
@@ -42,20 +64,8 @@ def get_preds_and_embeds(texts, save_dir, is_labeled=True, batch_size=64) -> Tup
         'neutral': 1e-2,
         'negative': -1.0,
     }
-    checkpoint_len = 2000000
-    next_checkpoint = 2000000
     
     for i in tqdm(range(0, len(texts), batch_size)):
-        if i > next_checkpoint:
-            next_checkpoint += checkpoint_len
-            print("Checkpointing")
-            with open(save_dir / "types.txt", "w") as file:
-                for item in types:
-                    file.write(f"{item}\n") 
-            with open(save_dir / "scores.txt", "w") as file:
-                for item in scores:
-                    file.write(f"{item}\n") 
-
         batch = texts[i:i + batch_size]
         
         inputs = tokenizer(
@@ -88,13 +98,27 @@ def get_preds_and_embeds(texts, save_dir, is_labeled=True, batch_size=64) -> Tup
 
 def preprocess_news(
     path_to_news: str,
-    stocks_to_observe: str,
+    stocks_to_observe: list,
     stock_to_sector_path: str,
     save_dir: Path,
     start_date: pd.Timestamp, 
     end_date: pd.Timestamp) -> pd.DataFrame:
-
-    news_data = pd.read_csv(path_to_news)
+    """
+    Preprocesses given news. Cropping needed information in given period.
+    Calculates year and day of the year for each observation. Calculates embeddings 
+    for every relevant news.
+    Args:
+        path_to_news (str): path to news data
+        stocks_to_observe (list): list of needed stocks
+        stock_to_sector_path (str): path to stock to sector dict
+        save_dir (Path): path to saving directory
+        start_date (pd.Timestamp): start date of observation
+        end_date (pd.Timestamp): end date of observation 
+    Returns:
+        news_to_observe (pd.DataFrame): Frame with labeled news
+        unlabeled_news (pd.DataFrame): Frame with general news
+    """
+    news_data = pd.read_csv(path_to_news, nrows=3000)
 
     print("Cropping data...")
     news_data.Date = pd.to_datetime(news_data.Date).dt.tz_localize(None)
@@ -125,21 +149,40 @@ def preprocess_news(
     news_to_observe['Embeddings'] = news_to_observe['Embeddings'].apply(json.dumps)
 
     texts_to_process = [prepare_text(unlabeled_news.iloc[i]) for i in range(len(unlabeled_news))]
-    scores, types, embeds = get_preds_and_embeds(texts_to_process, save_dir)
+    scores, types, embeds = get_preds_and_embeds(texts_to_process, False)
+    unlabeled_news['Texts'] = texts_to_process
     unlabeled_news['Score'] = scores
     unlabeled_news['Type'] = types
     unlabeled_news['Abs_Score'] = unlabeled_news['Type'].abs() * unlabeled_news['Score']
 
-    news_to_observe = news_to_observe[["Year", "Day", "Type", "Score", "Abs_Score", "Embeddings", "Sector", "Stock_symbol"]]
-    unlabeled_news = unlabeled_news[["Year", "Day", "Type", "Score", "Abs_Score"]]
+    news_to_observe = news_to_observe[["Year", "Day", "Abs_Score", "Embeddings", "Sector", "Stock_symbol"]]
+    unlabeled_news = unlabeled_news.groupby(['Year', 'Day']).apply(lambda x: x.nlargest(5, 'Abs_Score')).reset_index(drop=True)
+    _, _, embeds = get_preds_and_embeds(unlabeled_news['Texts'].tolist())
+    unlabeled_news['Embeddings'] = embeds
+    unlabeled_news['Embeddings'] = unlabeled_news['Embeddings'].apply(json.dumps)
 
+    unlabeled_news = unlabeled_news[["Year", "Day", "Abs_Score", "Embeddings"]]
     return news_to_observe, unlabeled_news
 
 def preprocess_stocks(
     stocks_list: str, 
     stocks_dir: str,
     num_train_stocks: int):
-
+    """
+    Preprocesses required stocks from stoсk list. Choosing needed amount 
+    of stocks with the longest history of observation. Calculates year 
+    and day of the year for each observation.
+    Args:
+        stocks_list (str): path to list of required stocks
+        stocks_dir (str): directory with stocks data
+        num_train_stocks (int): needed amount of stocks
+    Returns:
+        total (pd.DataFrame): Frame with information about needed stocks
+        scaler (StandardScaler): Scaler of stock information
+        sorted_stocks (list): list of observed stocks
+        start_date (pd.Timestamp): min observed date
+        end_date (pd.Timestamp): max observed date 
+    """
     min_dates = []
     existing = []
     max_date = pd.to_datetime("2023-12-28 00:00:00")
@@ -187,6 +230,11 @@ def preprocess_stocks(
 
 @hydra.main(version_base=None, config_path="src/configs", config_name="preprocess")
 def main(config):
+    """
+    Saves all preprocessed data in save directory for the future training and inference.
+    Args:
+        config (OmegaConf): config
+    """
     config = config.vars
     num_train_stocks = config.num_train_stocks
     stocks_dir = config.stocks_dir
@@ -202,17 +250,15 @@ def main(config):
         num_train_stocks=num_train_stocks,
     )
 
-    print("Start", start_date)
-    print("End", end_date)
-
     news_to_observe, unlabeled_news = preprocess_news(
         path_to_news=path_to_news, 
         stocks_to_observe=sorted_stocks,
         stock_to_sector_path=stock_to_sector_path,
         save_dir=save_dir,
         start_date=start_date, 
-        end_date=end_date
+        end_date=end_date,
     )
+    print("Datasets are saving...")
     news_to_observe.to_csv(save_dir / 'news_to_observe.csv', index=False)
     unlabeled_news.to_csv(save_dir / 'unlabeled_news.csv', index=False)
 

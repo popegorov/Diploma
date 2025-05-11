@@ -1,0 +1,4 @@
+defaults:
+  - batch_transforms: diff_model
+  - instance_transforms: diff_model
+  - _self_

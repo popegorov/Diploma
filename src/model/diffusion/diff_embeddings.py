@@ -7,6 +7,14 @@ class DiffusionEmbedding(nn.Module):
         self,
         num_steps: int,
         dim: int=64) -> torch.Tensor:
+        """
+        Builds buffer of diffusion embeddings
+        Args:
+            num_steps (int): number of possible diffusion steps
+            dim (int): dimension of diffusion embedding
+        Returns:
+            table (torch.Tensor): table of embeddings
+        """
 
         steps = torch.arange(num_steps).unsqueeze(1)
         frequencies = 10.0**(torch.arange(dim) / (dim-1))
@@ -45,6 +53,13 @@ class DiffusionEmbedding(nn.Module):
         )
 
     def forward(self, diffusion_step: int) -> torch.Tensor:
+        """
+        Forwards embedding
+        Args:
+            diffusion_step (int): diffusion step
+        Returns:
+            embedding (torch.Tensor): diffusion embedding
+        """
         x = self.embedding[diffusion_step]
         x = F.silu(self.projection1(x))
         return F.silu(self.projection2(x))

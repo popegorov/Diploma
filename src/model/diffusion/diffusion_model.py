@@ -64,7 +64,15 @@ class DiffusionModel(nn.Module):
         x: torch.Tensor,
         cond_info: torch.Tensor,
         diffusion_step: torch.Tensor) -> torch.Tensor:
-
+        """
+        Forwards data
+        Args:
+            x (torch.Tensor): batch
+            cond_info (torch.Tensor): accumulated side information
+            diffusion_step (torch.Tensor): number of diffusion step
+        Returns:
+            x (torch.Tensor): forwarded batch through all residual blocks
+        """
         B, C, K, L = x.shape
         x = x.reshape(B, C, K*L)
         x = F.relu(self.input_projection(x))

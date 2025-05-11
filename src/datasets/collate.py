@@ -34,8 +34,6 @@ def collate_fn(dataset_items: list[dict]):
     result_batch["observed_masks"] = torch.stack(obs_masks, dim=0).transpose(1, 2)
     result_batch["observed_timestamps"] = torch.stack(obs_tps, dim=0)
     result_batch["gt_masks"] = torch.stack(gt_masks, dim=0).transpose(1, 2)
-    result_batch["observed_news"] = torch.stack(obs_news, dim=0)
-    print("obs news", result_batch["observed_news"].shape)
-    print("gt_masks", result_batch["gt_masks"].shape)
+    result_batch["observed_news"] = torch.stack(obs_news, dim=0).transpose(1, 2)
 
     return result_batch

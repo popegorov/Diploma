@@ -60,52 +60,74 @@ class ResidualBlock(nn.Module):
         
     def forward_time(
         self, 
-        y: torch.Tensor, 
+        x: torch.Tensor, 
         base_shape: list) -> torch.Tensor:
-
+        """
+        Forwards data through time dimension
+        Args:
+            x (torch.Tensor): batch
+            base_shape (list): shape of ground truth batch
+        Returns:
+            x (torch.Tensor): forwarded batch
+        """
         B, C, K, L = base_shape
 
         if L == 1:
-            return y
+            return x
 
-        y = y.reshape(*base_shape).transpose(1, 2)
-        y = y.reshape(B*K, C, L)
+        x = x.reshape(*base_shape).transpose(1, 2)
+        x = x.reshape(B*K, C, L)
 
         if self.is_linear:
-            y = self.time_layer(y.transpose(1, 2)).transpose(1, 2)
+            x = self.time_layer(x.transpose(1, 2)).transpose(1, 2)
         else:
-            y = self.time_layer(y.permute(2, 0, 1)).permute(1, 2, 0)
+            x = self.time_layer(x.permute(2, 0, 1)).permute(1, 2, 0)
         
-        y = y.reshape(B, K, C, L).transpose(1, 2).reshape(B, C, K*L)
-        return y 
+        x = x.reshape(B, K, C, L).transpose(1, 2).reshape(B, C, K*L)
+        return x 
 
     def forward_feature(
         self,
-        y: torch.Tensor,
+        x: torch.Tensor,
         base_shape: list) -> torch.Tensor:
-        
+        """
+        Forwards data through feature dimension
+        Args:
+            x (torch.Tensor): batch
+            base_shape (list): shape of ground truth batch
+        Returns:
+            x (torch.Tensor): forwarded batch
+        """
         B, C, K, L = base_shape
 
         if K == 1:
-            return y
+            return x
 
-        y = y.reshape(*base_shape).permute(0, 3, 1, 2)
-        y = y.reshape(B*L, C, K)
+        x = x.reshape(*base_shape).permute(0, 3, 1, 2)
+        x = x.reshape(B*L, C, K)
 
         if self.is_linear:
-            y = self.feature_layer(y.transpose(1, 2)).transpose(1, 2)
+            x = self.feature_layer(x.transpose(1, 2)).transpose(1, 2)
         else:
-            y = self.feature_layer(y.permute(2, 0, 1)).permute(1, 2, 0)
+            x = self.feature_layer(x.permute(2, 0, 1)).permute(1, 2, 0)
         
-        y = y.reshape(B, L, C, K).permute(0, 2, 3, 1).reshape(B, C, K*L)
-        return y
+        x = x.reshape(B, L, C, K).permute(0, 2, 3, 1).reshape(B, C, K*L)
+        return x
 
     def forward(
         self,
         x: torch.Tensor,
         cond_info: torch.Tensor,
         diffusion_embedding: torch.Tensor) -> torch.Tensor:
-
+        """
+        Forwards data
+        Args:
+            x (torch.Tensor): batch
+            cond_info (torch.Tensor): accumulated side information
+            diffusion_embedding (torch.Tensor): embedding of diffusion step
+        Returns:
+            x (torch.Tensor): forwarded batch
+        """
         B, C, K, L = base_shape = x.shape
         x = x.reshape(B, C, K*L)
 
@@ -113,8 +135,8 @@ class ResidualBlock(nn.Module):
         diffusion_embedding = diffusion_embedding.unsqueeze(-1)
         y = x + diffusion_embedding
 
-        y = self.forward_time(y=y, base_shape=base_shape)
-        y = self.forward_feature(y=y, base_shape=base_shape)
+        y = self.forward_time(x=y, base_shape=base_shape)
+        y = self.forward_feature(x=y, base_shape=base_shape)
         y = self.mid_projection(y) # B, 2*C, K*L
 
         B, CD, K, L = cond_info.shape

@@ -27,7 +27,6 @@ class R2(BaseMetric):
             metric (float): calculated R^2 metric.
         """
 
-
         target_mask = observed_masks - gt_masks
         target_data = observed_data * target_mask
         predicted_data = predicted * target_mask

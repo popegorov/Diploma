@@ -26,5 +26,5 @@ class MSELoss(nn.Module):
         target_mask = observed_mask - cond_mask
         residual = (noise - predicted) * target_mask
         num_eval = target_mask.sum()
-        loss = residual**2.sum() / (num_eval if num_eval > 0 else 1)
+        loss = (residual**2).sum() / (num_eval if num_eval > 0 else 1)
         return {"loss": loss}
