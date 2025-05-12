@@ -118,7 +118,7 @@ def preprocess_news(
         news_to_observe (pd.DataFrame): Frame with labeled news
         unlabeled_news (pd.DataFrame): Frame with general news
     """
-    news_data = pd.read_csv(path_to_news, nrows=3000)
+    news_data = pd.read_csv(path_to_news)
 
     print("Cropping data...")
     news_data.Date = pd.to_datetime(news_data.Date).dt.tz_localize(None)

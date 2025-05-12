@@ -2,8 +2,8 @@ defaults:
   - _self_
 vars:
   stocks_dir: /Users/legend/Desktop/Универ/4/Diploma/full_history
-  stocks_list: /Users/legend/Desktop/Универ/4/Diploma/existing_s&p500_stocks.txt
-  stock_to_sector_path: /Users/legend/Desktop/Универ/4/Diploma/stock_to_sector.json
   path_to_news: /Users/legend/Desktop/Универ/4/Diploma/nasdaq_exteral_data.csv
+  stocks_list: existing.txt
+  stock_to_sector_path: stock_to_sector.json
   num_train_stocks: 300
   save_dir: saved
