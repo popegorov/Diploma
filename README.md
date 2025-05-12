@@ -45,7 +45,7 @@
    python3 -m venv project_env
 
    # activate env
-   source project_env
+   source project_env/bin/activate
    ```
 
 1. Install all required packages
