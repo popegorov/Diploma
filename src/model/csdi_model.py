@@ -1,5 +1,4 @@
 from hydra.utils import instantiate
-from omegaconf import OmegaConf
 from torch import nn
 
 import numpy as np
@@ -15,6 +14,7 @@ class BaseDiffModel(nn.Module):
         num_steps: int,
         n_samples: int,
         is_unconditional: int,
+        with_news: bool,
         beta_start: float,
         beta_end: float,
         diff_model_config: dict,
@@ -31,9 +31,12 @@ class BaseDiffModel(nn.Module):
         self.emb_feature_dim = feature_embed_dim
         self.news_embed_dim = news_embed_dim
         self.is_unconditional = is_unconditional
+        self.with_news = with_news
         self.target_strategy = target_startegy
 
-        self.emb_total_dim = self.emb_time_dim + self.emb_feature_dim + self.news_embed_dim
+        self.emb_total_dim = self.emb_time_dim + self.emb_feature_dim
+        if self.with_news:
+            self.emb_total_dim += self.news_embed_dim
         if not self.is_unconditional:
             self.emb_total_dim += 1
         
@@ -159,7 +162,8 @@ class BaseDiffModel(nn.Module):
 
         side_info = torch.cat([time_embed, feature_embed], dim=-1)
 
-        side_info = torch.cat([side_info, observed_news], dim=-1) 
+        if self.with_news:
+            side_info = torch.cat([side_info, observed_news], dim=-1) 
 
         side_info = side_info.transpose(1, 3) #(B, Et + Ef + En, K, L)
 

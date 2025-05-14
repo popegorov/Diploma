@@ -46,41 +46,6 @@ class BaseDataset(Dataset):
 
         self.instance_transforms = instance_transforms
 
-    # def get_common_news(self, timestamp: str, embedding_size: int) -> torch.Tensor:
-    #     filtered_news = self.common_news[self.common_news['Period'] == timestamp].copy()
-        
-    #     to_return = filtered_news.Embeddings.tolist()
-    #     return to_return if to_return else torch.zeros(embedding_size, dtype=torch.float32)
-
-    # def get_observed_news(self, timestamps: np.array) -> torch.Tensor:
-    #     filtered_news = self.news[self.news['Period'].isin(timestamps)].copy()
-    #     embeds = (
-    #         filtered_news
-    #         .sort_values(['Period', 'Abs_Score'], ascending=[True, False])
-    #         .groupby(['Stock_symbol', 'Period'])
-    #         .head(5)
-    #         .groupby(['Stock_symbol', 'Period'])
-    #         .agg({"Embeddings": list})
-    #     ).reset_index()
-
-    #     pivoted = embeds.pivot(index='Stock_symbol', columns='Period', values='Embeddings')
-    #     stocks = embeds['Stock_symbol'].unique()
-    #     periods = embeds['Period'].unique()
-    #     # embedding_size = len(embeds['Embeddings'].iloc[0][0])
-
-    #     tensor = torch.zeros((len(self.observed_stocks), len(timestamps), embedding_size), dtype=torch.float32)
-    #     for i, stock in enumerate(self.observed_stocks):
-    #         for j, period in enumerate(timestamps):
-    #             if period in periods and stock in stocks:
-    #                 embedding = pivoted.loc[stock, period]
-    #             else:
-    #                 embedding = self.get_common_news(period, self.embedding_size)
-    #             tensor[i, j] = torch.tensor(
-    #                 data=embedding, 
-    #                 dtype=torch.float32,
-    #             ).mean(axis=0) # getting average embedding for stock in period
-    #     return tensor
-
     def __getitem__(self, ind):
         """
         Get element from the index, preprocess it, and combine it

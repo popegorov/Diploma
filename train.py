@@ -13,7 +13,7 @@ warnings.filterwarnings("ignore")
 
 OmegaConf.register_new_resolver("scale", lambda value, factor: int(value * factor))
 
-@hydra.main(version_base=None, config_path="src/configs", config_name="diff_model")
+@hydra.main(version_base=None, config_path="src/configs", config_name="train")
 def main(config):
     """
     Main script for training. Instantiates the model, optimizer, scheduler,

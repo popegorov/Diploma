@@ -5,6 +5,7 @@ feature_embed_dim: 16
 news_embed_dim: 768 # from FinBERT
 num_steps: 50
 is_unconditional: 0
+with_news: False
 beta_start: 0.0001
 beta_end: 0.5
 n_samples: 10

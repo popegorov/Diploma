@@ -9,8 +9,7 @@ from src.trainer import Inferencer
 from src.utils.init_utils import set_random_seed
 from src.utils.io_utils import ROOT_PATH
 
-warnings.filterwarnings("ignore", category=UserWarning)
-
+warnings.filterwarnings("ignore")
 
 @hydra.main(version_base=None, config_path="src/configs", config_name="inference")
 def main(config):
@@ -22,18 +21,20 @@ def main(config):
     Args:
         config (DictConfig): hydra experiment config.
     """
-    set_random_seed(config.inferencer.seed)
+    
+    set_random_seed(config.trainer.seed)
 
-    if config.inferencer.device == "auto":
+    if config.trainer.device == "auto":
         device = "cuda" if torch.cuda.is_available() else "cpu"
     else:
-        device = config.inferencer.device
+        device = config.trainer.device
 
     # setup data_loader instances
     # batch_transforms should be put on device
     dataloaders, batch_transforms = get_dataloaders(config, device)
 
     # build model architecture, then print to console
+    config.model.device = device
     model = instantiate(config.model).to(device)
     print(model)
 
@@ -41,7 +42,7 @@ def main(config):
     metrics = instantiate(config.metrics)
 
     # save_path for model predictions
-    save_path = ROOT_PATH / "data" / "saved" / config.inferencer.save_path
+    save_path = ROOT_PATH / "data" / "saved" / config.trainer.save_path
     save_path.mkdir(exist_ok=True, parents=True)
 
     inferencer = Inferencer(

@@ -1,9 +1,12 @@
+import json
+import matplotlib.pyplot as plt
+import seaborn as sns
 import torch
 from tqdm.auto import tqdm
 
 from src.metrics.tracker import MetricTracker
 from src.trainer.base_trainer import BaseTrainer
-
+from src.utils.io_utils import ROOT_PATH
 
 class Inferencer(BaseTrainer):
     """
@@ -48,11 +51,11 @@ class Inferencer(BaseTrainer):
                 Inferencer Class.
         """
         assert (
-            skip_model_load or config.inferencer.get("from_pretrained") is not None
+            skip_model_load or config.trainer.get("from_pretrained") is not None
         ), "Provide checkpoint or set skip_model_load=True"
 
         self.config = config
-        self.cfg_trainer = self.config.inferencer
+        self.cfg_trainer = self.config.trainer
 
         self.device = device
 
@@ -78,7 +81,7 @@ class Inferencer(BaseTrainer):
 
         if not skip_model_load:
             # init model
-            self._from_pretrained(config.inferencer.get("from_pretrained"))
+            self._from_pretrained(config.trainer.get("from_pretrained"))
 
     def run_inference(self):
         """
@@ -90,6 +93,8 @@ class Inferencer(BaseTrainer):
         """
         part_logs = {}
         for part, dataloader in self.evaluation_dataloaders.items():
+            if part == "train":
+                continue
             logs = self._inference_part(part, dataloader)
             part_logs[part] = logs
         return part_logs
@@ -117,7 +122,9 @@ class Inferencer(BaseTrainer):
                 and model outputs.
         """
         batch = self.move_batch_to_device(batch)
-        batch = self.transform_batch(batch)  # transform batch on device -- faster
+        # batch = self.transform_batch(batch)  # transform batch on device -- faster
+
+        batch['is_train'] = False
 
         outputs = self.model(**batch)
         batch.update(outputs)
@@ -125,30 +132,6 @@ class Inferencer(BaseTrainer):
         if metrics is not None:
             for met in self.metrics["inference"]:
                 metrics.update(met.name, met(**batch))
-
-        # Some saving logic. This is an example
-        # Use if you need to save predictions on disk
-
-        batch_size = batch["logits"].shape[0]
-        current_id = batch_idx * batch_size
-
-        for i in range(batch_size):
-            # clone because of
-            # https://github.com/pytorch/pytorch/issues/1995
-            logits = batch["logits"][i].clone()
-            label = batch["labels"][i].clone()
-            pred_label = logits.argmax(dim=-1)
-
-            output_id = current_id + i
-
-            output = {
-                "pred_label": pred_label,
-                "label": label,
-            }
-
-            if self.save_path is not None:
-                # you can use safetensors or other lib here
-                torch.save(output, self.save_path / part / f"output_{output_id}.pth")
 
         return batch
 
@@ -172,6 +155,10 @@ class Inferencer(BaseTrainer):
         if self.save_path is not None:
             (self.save_path / part).mkdir(exist_ok=True, parents=True)
 
+        stocks = dataloader.dataset.observed_stocks
+        predicted_series = []
+        gt_series = []
+
         with torch.no_grad():
             for batch_idx, batch in tqdm(
                 enumerate(dataloader),
@@ -184,5 +171,37 @@ class Inferencer(BaseTrainer):
                     part=part,
                     metrics=self.evaluation_metrics,
                 )
+                for i in range(len(batch["predicted"])):
+                    predicted = batch["predicted"][i].clone()
+                    observed_data = batch["observed_data"][i].clone()
+                    gt_mask = batch["gt_masks"][i].clone()
+                    gt_series.append(observed_data[:,-1])
+                    if gt_mask[:,-1].any():
+                        predicted_series.append(torch.zeros(gt_mask.shape[1]))
+                    else:
+                        predicted_series.append(predicted[:,-1])
+                
+        predicted_series = torch.stack(predicted_series, dim=0) # LxK
+        gt_series = torch.stack(gt_series, dim=0) # LxK
+        r2s = {}
+
+        timestamps = torch.arange(len(predicted_series))
+        if self.save_path is not None:
+            for i, stock in enumerate(stocks):
+                preds = predicted_series[:,i]
+                gts = gt_series[:,i]
+ 
+                r2s[stock] = (gts - preds)**2 / (gts - gts.mean())**2
+                plt.figure()
+                plt.title(stock)
+                sns.lineplot(x=timestamps, y=preds, label="Predicted")
+                sns.lineplot(x=timestamps, y=gts, label="True").set(xlabel="Time)", ylabel="Price log difference")
+                plt.savefig(f"{self.save_path / stock}.png", dpi=300, bbox_inches='tight')
+                plt.close()
+
+        with open(self.save_path / "real_r2s.json", 'w') as f:
+            json.dump(r2s, f)
+
+        print("Real mean R^2:", sum(r2s.values) / len(r2s))
 
         return self.evaluation_metrics.result()

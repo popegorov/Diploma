@@ -1,0 +1,8 @@
+_target_: src.model.BaseLSTMModel
+device: ${trainer.device}
+loss_type: "mse"
+lstm_model_config:
+  price_hidden_size: 64 
+  news_hidden_size: 64
+  mixed_hidden_size: 128
+  news_input_dim: 768 # from FinBERT

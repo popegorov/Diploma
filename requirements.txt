@@ -4,6 +4,7 @@ torchmetrics
 numpy<2
 tqdm
 matplotlib
+seaborn
 pandas
 wandb
 hydra-core
