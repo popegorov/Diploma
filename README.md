@@ -63,7 +63,7 @@ wget https://huggingface.co/datasets/Zihan1004/FNSPID/resolve/main/Stock_price/f
 wget https://huggingface.co/datasets/Zihan1004/FNSPID/resolve/main/Stock_news/nasdaq_exteral_data.csv
 ```
 
-2. Then we need to preprocess data, set the fields stocks_dir and path_to_news with paths to "full_hsitory/" and "nasdaq_exteral_data.csv" respectively, run the following command (you will need accelerator for this, it will take about 3 hours on GPU A100):
+2. Then we need to preprocess data, set the fields stocks_dir and path_to_news with paths to "full_history/" and "nasdaq_exteral_data.csv" respectively, run the following command (you will need accelerator for this, it will take about 3 hours on GPU A100):
 
 ```bash
 python3 preprocess_data.py
