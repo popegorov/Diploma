@@ -1,6 +1,5 @@
 from hydra.utils import instantiate
 from torch import nn
-import numpy as np
 import torch
 
 
@@ -23,7 +22,14 @@ class BaseLSTMModel(nn.Module):
         observed_data: torch.Tensor,
         observed_news: torch.Tensor,
         **batch) -> dict:
-
+        """
+        Model forward
+        Args:
+            observed_data (torch.Tensor): ground truth data
+            observed_news (torch.Tensor): news embeddings
+        Returns:
+            loss (dict): predictions dict with loss
+        """
         to_predict = observed_data[:,:,-1]
         data = observed_data[:,:,:-1]
 

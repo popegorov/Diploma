@@ -188,20 +188,20 @@ class Inferencer(BaseTrainer):
         timestamps = torch.arange(len(predicted_series))
         if self.save_path is not None:
             for i, stock in enumerate(stocks):
-                preds = predicted_series[:,i]
-                gts = gt_series[:,i]
+                preds = predicted_series[:,i].detach().cpu().numpy()
+                gts = gt_series[:,i].detach().cpu().numpy()
  
-                r2s[stock] = (gts - preds)**2 / (gts - gts.mean())**2
+                r2s[stock] = 1.0 - (((gts - preds)**2).sum() / ((gts - gts.mean())**2).sum()).item()
                 plt.figure()
                 plt.title(stock)
                 sns.lineplot(x=timestamps, y=preds, label="Predicted")
-                sns.lineplot(x=timestamps, y=gts, label="True").set(xlabel="Time)", ylabel="Price log difference")
+                sns.lineplot(x=timestamps, y=gts, label="True").set(xlabel="Time", ylabel="Price log difference")
                 plt.savefig(f"{self.save_path / stock}.png", dpi=300, bbox_inches='tight')
                 plt.close()
 
         with open(self.save_path / "real_r2s.json", 'w') as f:
             json.dump(r2s, f)
 
-        print("Real mean R^2:", sum(r2s.values) / len(r2s))
+        print("Real mean R^2:", sum(r2s.values()) / len(r2s))
 
         return self.evaluation_metrics.result()

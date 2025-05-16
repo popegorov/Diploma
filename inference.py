@@ -21,13 +21,13 @@ def main(config):
     Args:
         config (DictConfig): hydra experiment config.
     """
-    
     set_random_seed(config.trainer.seed)
 
     if config.trainer.device == "auto":
         device = "cuda" if torch.cuda.is_available() else "cpu"
     else:
         device = config.trainer.device
+    print("Device:", device)
 
     # setup data_loader instances
     # batch_transforms should be put on device
